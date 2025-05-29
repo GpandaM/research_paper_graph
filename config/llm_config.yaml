@@ -1,0 +1,44 @@
+openai:
+  api_key: "${OPENAI_API_KEY}"  # Set via environment variable
+  organization: null
+  base_url: null
+
+query_settings:
+  default_similarity_top_k: 5
+  response_mode: "tree_summarize"
+  max_query_length: 1000
+  enable_streaming: false
+
+summarization:
+  max_summary_length: 500
+  include_citations: true
+  group_similar_findings: true
+
+advanced:
+  chunk_size: 1000
+  chunk_overlap: 200
+  enable_keyword_extraction: true
+  custom_prompt_templates:
+    summarization: |
+      Based on the research papers provided, create a comprehensive summary focusing on:
+      1. Key findings and methodologies
+      2. Common themes and patterns
+      3. Research gaps and future directions
+      4. Chronological evolution of the field
+      
+      Format the response with clear sections and include specific paper references.
+    
+    comparison: |
+      Compare the research approaches, methodologies, and findings between the specified topics.
+      Highlight:
+      1. Key differences in approach
+      2. Comparative advantages and limitations
+      3. Use cases and applications
+      4. Performance metrics where available
+    
+    trend_analysis: |
+      Analyze the research trends in the provided papers:
+      1. Identify emerging topics and methodologies
+      2. Track evolution over time
+      3. Highlight influential papers and authors
+      4. Predict future research directions

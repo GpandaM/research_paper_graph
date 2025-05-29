@@ -1,0 +1,34 @@
+llm:
+  model: "gpt-3.5-turbo"
+  embedding_model: "text-embedding-ada-002"
+  temperature: 0.1
+  max_tokens: 2000
+
+graph:
+  similarity_threshold: 0.3
+  max_keywords_per_paper: 10
+  enable_author_similarity: true
+  enable_citation_relationships: true
+
+data:
+  required_columns:
+    - "Title"
+    - "Author(s)" 
+    - "Keywords"
+    - "Year"
+  optional_columns:
+    - "Journal/Conference"
+    - "Methodology"
+    - "Main Findings"
+    - "Citations (est.)"
+    - "DOI/Link"
+
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/research_graph.log"
+
+storage:
+  graph_cache_dir: "data/graphs"
+  processed_data_dir: "data/processed"
+  enable_caching: true
