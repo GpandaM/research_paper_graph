@@ -129,9 +129,7 @@ weaviate:
   host: "localhost"
   port: 8080
   scheme: "http"
-  openai_api_key: "your-openai-api-key"  # Required if using OpenAI embeddings
   class_name: "ResearchPaper"
-  vectorizer: "text2vec-openai"  # Alternatives: "none", "text2vec-transformers", etc.
   properties:
     - name: "title"
       dataType: ["text"]

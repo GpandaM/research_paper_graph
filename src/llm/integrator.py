@@ -27,8 +27,8 @@ class GraphQueryEngine:
         
         # Weaviate setup
         self.vector_store = WeaviateVectorStore(
-            weaviate_config['url'],
-            weaviate_config['index_name']
+            weaviate_config.get('url'),
+            weaviate_config.get('index_name')
         )
         
         storage_context = StorageContext.from_defaults(

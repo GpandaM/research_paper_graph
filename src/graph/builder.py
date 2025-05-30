@@ -24,7 +24,8 @@ class GraphBuilder:
         """Add a node to the graph with duplicate prevention."""
         if node.id not in self.nodes_registry:
             self.nodes_registry[node.id] = node
-            self.graph.add_node(node.id, **node.to_dict())
+            # self.graph.add_node(node.id, **node.to_dict())
+            self.graph.add_node(node.id, node=node, **node.to_dict())
     
     def add_relationship(self, relationship: Relationship) -> None:
         """Add a weighted relationship to the graph."""
