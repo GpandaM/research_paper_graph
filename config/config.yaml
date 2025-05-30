@@ -1,14 +1,68 @@
-llm:
-  model: "gpt-3.5-turbo"
-  embedding_model: "text-embedding-ada-002"
-  temperature: 0.1
-  max_tokens: 2000
-
 graph:
   similarity_threshold: 0.3
   max_keywords_per_paper: 10
   enable_author_similarity: true
   enable_citation_relationships: true
+
+nebula:
+  host: "127.0.0.1"
+  port: 9669
+  user: "root"
+  password: "nebula"
+  space_name: "research_papers"
+  partition_num: 100
+  replica_factor: 1
+  storage_engine: "rocksdb"
+  # Schema definitions
+  vertex_types:
+    - name: "Paper"
+      properties:
+        - name: "title"
+          type: "string"
+        - name: "year"
+          type: "int"
+        - name: "keywords"
+          type: "string[]"
+        - name: "abstract"
+          type: "string"
+    - name: "Author"
+      properties:
+        - name: "name"
+          type: "string"
+  edge_types:
+    - name: "CITES"
+      properties:
+        - name: "year"
+          type: "int"
+    - name: "AUTHORED_BY"
+      properties: []
+
+weaviate:
+  host: "localhost"
+  port: 8080
+  scheme: "http"
+  openai_api_key: "your-openai-api-key"  # Required if using OpenAI embeddings
+  class_name: "ResearchPaper"
+  vectorizer: "text2vec-openai"  # Alternatives: "none", "text2vec-transformers", etc.
+  properties:
+    - name: "title"
+      dataType: ["text"]
+    - name: "authors"
+      dataType: ["text[]"]
+    - name: "year"
+      dataType: ["int"]
+    - name: "keywords"
+      dataType: ["text[]"]
+    - name: "abstract"
+      dataType: ["text"]
+  additional_config:
+    batch_size: 100
+    dynamic_batching: true
+    vector_index_type: "hnsw"  # Alternatives: "flat"
+    vector_index_config:
+      distance_metric: "cosine"
+      efConstruction: 128
+      maxConnections: 64
 
 data:
   required_columns:
@@ -31,4 +85,5 @@ logging:
 storage:
   graph_cache_dir: "data/graphs"
   processed_data_dir: "data/processed"
+  vector_store_dir: "data/vectors"
   enable_caching: true

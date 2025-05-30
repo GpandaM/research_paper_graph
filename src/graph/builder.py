@@ -326,36 +326,41 @@ class GraphBuilder:
         return cleaned.strip('_')
     
     def _build_similarity_relationships(self, threshold: float = 0.3) -> None:
-        """Build similarity relationships between papers based on shared keywords."""
-        paper_keywords = defaultdict(set)
+        """Optimized similarity relationship builder using inverted index"""
+        keyword_papers = defaultdict(set)
+        paper_keywords = {}
         
-        # Collect keywords for each paper
+        # Build inverted index
         for node_id, node_data in self.graph.nodes(data=True):
             if node_data.get('type') == 'paper':
-                paper_keywords[node_id] = set(node_data.get('keywords', []))
+                keywords = set(node_data.get('keywords', []))
+                paper_keywords[node_id] = keywords
+                for kw in keywords:
+                    keyword_papers[kw].add(node_id)
         
-        # Calculate similarities and create relationships
-        papers = list(paper_keywords.keys())
-        for i, paper1 in enumerate(papers):
-            for paper2 in papers[i+1:]:
-                keywords1 = paper_keywords[paper1]
-                keywords2 = paper_keywords[paper2]
-                
-                if keywords1 and keywords2:
-                    # Jaccard similarity
-                    intersection = len(keywords1.intersection(keywords2))
-                    union = len(keywords1.union(keywords2))
-                    similarity = intersection / union if union > 0 else 0
-                    
-                    if similarity >= threshold:
-                        rel = Relationship(
-                            source_id=paper1,
-                            target_id=paper2,
-                            relationship_type=RelationshipType.SIMILAR_TO,
-                            properties={'similarity_score': similarity},
-                            weight=similarity
-                        )
-                        self.add_relationship(rel)
+        # Find similar papers
+        similar_pairs = defaultdict(int)
+        for kw, papers in keyword_papers.items():
+            papers = list(papers)
+            for i in range(len(papers)):
+                for j in range(i+1, len(papers)):
+                    pair = tuple(sorted([papers[i], papers[j]]))
+                    similar_pairs[pair] += 1
+        
+        # Create relationships
+        for (paper1, paper2), intersection in similar_pairs.items():
+            union = len(paper_keywords[paper1] | paper_keywords[paper2])
+            similarity = intersection / union
+            
+            if similarity >= threshold:
+                rel = Relationship(
+                    source_id=paper1,
+                    target_id=paper2,
+                    relationship_type=RelationshipType.SIMILAR_TO,
+                    properties={'similarity_score': similarity},
+                    weight=similarity
+                )
+                self.add_relationship(rel)
     
     def _build_collaboration_relationships(self) -> None:
         """Build collaboration relationships between authors."""
