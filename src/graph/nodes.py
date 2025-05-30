@@ -4,51 +4,59 @@ from dataclasses import dataclass, field
 from enum import Enum
 
 class NodeType(Enum):
-    PAPER = "paper"
-    AUTHOR = "author"
-    KEYWORD = "keyword"
-    INSTITUTION = "institution"
-    JOURNAL = "journal"
-    METHODOLOGY = "methodology"
-    APPLICATION_AREA = "application_area"
-    EQUATION_MODEL = "equation_model"
+    PAPER = "PAPER"
+    AUTHOR = "AUTHOR"
+    INSTITUTION = "INSTITUTION"
+    JOURNAL = "JOURNAL"
+    KEYWORD = "KEYWORD"
+    METHODOLOGY = "METHODOLOGY"
+    APPLICATION_AREA = "APPLICATION_AREA"
+    EQUATION_MODEL = "EQUATION_MODEL"
 
 @dataclass
-class BaseNode(ABC):
-    """Base class for all graph nodes."""
+class BaseNode:
     id: str
-    type: NodeType
-    properties: Dict[str, Any]
+    node_type: NodeType
     
-    @abstractmethod
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert node to dictionary representation."""
-        pass
-
-@dataclass
-class RichPaperNode:
-    """Rich paper node with all information consolidated for efficient LLM queries."""
-    id: str
-    title: str
-    year: int
-    authors: List[str] = field(default_factory=list)
-    institutions: List[str] = field(default_factory=list)
-    journal: str = ""
-    keywords: List[str] = field(default_factory=list)
-    methodology: str = ""
-    main_findings: str = ""
-    equations_models: str = ""
-    application_area: str = ""
-    strengths: str = ""
-    limitations: str = ""
-    citations_count: int = 0
-    doi: str = ""
-    
-    def to_dict(self) -> Dict[str, Any]:
-        """Convert to dictionary for graph storage."""
+    def to_dict(self) -> Dict:
         return {
             'id': self.id,
-            'type': NodeType.PAPER.value,
+            'type': self.node_type.value
+        }
+
+@dataclass
+class EntityNode(BaseNode):
+    name: str
+    
+    def to_dict(self) -> Dict:
+        return {
+            **super().to_dict(),
+            'name': self.name
+        }
+
+@dataclass
+class RichPaperNode(BaseNode):
+    title: str
+    year: int
+    authors: List[str]
+    institutions: List[str]
+    journal: str
+    keywords: List[str]
+    methodology: str
+    main_findings: str
+    equations_models: str
+    application_area: str
+    strengths: str
+    limitations: str
+    citations_count: int
+    doi: str
+    
+    def __post_init__(self):
+        self.node_type = NodeType.PAPER
+    
+    def to_dict(self) -> Dict:
+        return {
+            **super().to_dict(),
             'title': self.title,
             'year': self.year,
             'authors': self.authors,
@@ -65,21 +73,6 @@ class RichPaperNode:
             'doi': self.doi
         }
 
-@dataclass
-class EntityNode:
-    """Generic entity node for authors, institutions, etc."""
-    id: str
-    name: str
-    node_type: NodeType
-    properties: Dict[str, Any] = field(default_factory=dict)
-    
-    def to_dict(self) -> Dict[str, Any]:
-        return {
-            'id': self.id,
-            'type': self.node_type.value,
-            'name': self.name,
-            **self.properties
-        }
 
 
 

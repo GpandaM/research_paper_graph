@@ -8,7 +8,7 @@ from .graph.builder import GraphBuilder
 from .llm.integrator import GraphQueryEngine
 from .utils.config import ConfigManager
 from .utils.logger import setup_logger
-from .storage.nebula_store import NebulaGraphStore
+from .storage.neo_store import Neo4jGraphStore
 
 class ResearchGraphApplication:
     """Main application class for the research paper knowledge graph."""
@@ -119,62 +119,54 @@ class ResearchGraphApplication:
             except Exception as e:
                 print(f"Error: {e}")
     
-    # def run(self, file_path: str, interactive: bool = True):
-    #     """Main execution method."""
-    #     try:
-    #         # Load and preprocess data
-    #         df = self.load_and_preprocess_data(file_path)
-    #         print(f"\nMain: data after load_and_preprocess is \n")
-    #         print(f"\n{df.columns}")
-    #         print(f"\n{df.head()}")
-            
 
-    #         ## Build graph
-    #         graph = self.build_graph(df)
-    #         print(f"\nMain: build_graph is completed.")
-
-            
-    #         # Setup LLM integration
-    #         self.setup_llm_integration(graph)
-            
-    #         if interactive:
-    #             self.run_interactive_mode()
-            
-    #         return graph, self.query_engine
-            
-    #     except Exception as e:
-    #         self.logger.error(f"Application error: {e}")
-    #         raise
-    
     def run(self, file_path: str, interactive: bool = True):
         # Load and preprocess data
         df = self.load_and_preprocess_data(file_path)
         
-        # Build and export to NebulaGraph
+        # Build and export to Neo4j
         graph = self.graph_builder.build_from_dataframe(df)
-        self.export_to_nebula(graph)
+        self.export_to_neo4j(graph)
         
         # Initialize query engine
-        # nebula_config = self.config['nebula']
+        # neo4j_config = self.config['neo4j']
         # weaviate_config = self.config['weaviate']
-        # self.query_engine = GraphQueryEngine(nebula_config, weaviate_config)
-    
+        # self.query_engine = GraphQueryEngine(neo4j_config, weaviate_config)
 
-    def export_to_nebula(self, graph: nx.MultiDiGraph):
-        nebula_store = NebulaGraphStore(self.config.get('nebula'))
+    def export_to_neo4j(self, graph: nx.MultiDiGraph):
+        neo4j_store = Neo4jGraphStore(self.config.get('neo4j'))
         
-        # Insert nodes
+        # First pass: Create all nodes
         for node_id, data in graph.nodes(data=True):
-            nebula_store.insert_node(data)
+            node_data = {
+                'id': node_id,
+                'type': data.get('type', ''),
+                'properties': {
+                    **data,
+                    'id': node_id  # Ensure ID is included in properties
+                }
+            }
+            print("\n\n")
+            print(f"{node_id}, and the type is {data.get('type', '')}")
+            print("\n\n")
+            neo4j_store.insert_node(node_data)
         
-        # Insert relationships
+        print("\n\n\n\n---------------------------- FIRST PASS COMPLETED ------------------------------\n\n\n\n\n")
+        
+        # Second pass: Create relationships after all nodes exist
         for src, dst, data in graph.edges(data=True):
-            nebula_store.insert_relationship({
-                'source': src,
-                'target': dst,
-                'type': data['type'],
-                'weight': data.get('weight', 1.0)
-            })
+            relationship_data = {
+                'source_id': src,
+                'target_id': dst,
+                'relationship_type': data.get('type', 'RELATED_TO'),
+                'properties': {
+                    'weight': data.get('weight', 1.0)
+                }
+            }
+            neo4j_store.insert_relationship(relationship_data)
+        
+        print("\n\n\n\n---------------------------- SECOND PASS COMPLETED ------------------------------\n\n\n\n\n")
+
 
 
 

@@ -21,22 +21,26 @@ class DataPreprocessor:
         return [kw for kw in keywords if kw and len(kw) > 1]
     
     def extract_authors(self, authors_str: str) -> List[str]:
-        """Extract individual authors from author string."""
         if pd.isna(authors_str):
             return []
-        
-        # Handle different author formats
-        authors = re.split(r'[,;]|\sand\s', authors_str)
+
+        # Normalize all whitespace/newlines
+        authors_str = re.sub(r'\s+', ' ', authors_str).strip()
+
+        # Split by semicolon OR newline
+        raw_authors = re.split(r'[;\n]+', authors_str)
+
         cleaned_authors = []
-        
-        for author in authors:
+        for author in raw_authors:
             author = author.strip()
-            if author:
-                # Remove common prefixes/suffixes
-                author = re.sub(r'^(Dr\.|Prof\.|Mr\.|Ms\.|Mrs\.)\s*', '', author)
-                cleaned_authors.append(author)
-        
+            if not author:
+                continue
+            author = re.sub(r'^(Dr\.|Prof\.|Mr\.|Ms\.|Mrs\.)\s*', '', author)
+            cleaned_authors.append(author)
+
         return cleaned_authors
+
+
     
     def estimate_citations(self, citations_str: str) -> int:
         """Convert citation string to integer."""

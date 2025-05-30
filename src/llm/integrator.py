@@ -9,43 +9,44 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core import StorageContext
 from llama_index.core.query_engine import KnowledgeGraphQueryEngine
 
-from llama_index.graph_stores.nebula import NebulaGraphStore
+# from llama_index.graph_stores.nebula import NebulaGraphStore
+from llama_index.graph_stores.neo4j import Neo4jGraphStore
 from llama_index.core import VectorStoreIndex, SimpleDirectoryReader
 from llama_index.vector_stores.weaviate import WeaviateVectorStore
 
 class GraphQueryEngine:
-    def __init__(self, nebula_config: dict, weaviate_config: dict):
-        # NebulaGraph setup
-        graph_store = NebulaGraphStore(
-            nebula_config['host'],
-            nebula_config['port'],
-            nebula_config['space'],
-            nebula_config['user'],
-            nebula_config['password']
-        )
+    def __init__(self, neo_config: dict, weaviate_config: dict):
+        # Neo4j setup
+        neo4j_config = {
+            "uri": neo_config.get("uri"),
+            "user": neo_config.get("user"),
+            "password": neo_config.get("password"),
+            "database": neo_config.get("database"),
+        }
+        self.graph_store = Neo4jGraphStore(**neo4j_config)
         
         # Weaviate setup
-        vector_store = WeaviateVectorStore(
+        self.vector_store = WeaviateVectorStore(
             weaviate_config['url'],
             weaviate_config['index_name']
         )
         
         storage_context = StorageContext.from_defaults(
-            graph_store=graph_store,
-            vector_store=vector_store
+            graph_store=self.graph_store,
+            vector_store=self.vector_store
         )
         
-        # Set global configuration (replaces ServiceContext)
+        # Set global configuration
         Settings.llm = Ollama(model="mistral:7b-instruct")
         Settings.embed_model = OllamaEmbedding(model_name="nomic-embed-text")
 
-        # Now create your query engine
+        # Create query engine
         self.query_engine = KnowledgeGraphQueryEngine(
             storage_context=storage_context,
             include_text=True
         )
     
-
+    
     def summarize(self, keyword: str) -> str:
         """Summarize research related to a specific keyword"""
         query = f"""
@@ -54,6 +55,7 @@ class GraphQueryEngine:
         """
         response = self.query_engine.query(query)
         return str(response)
+    
     
     def compare_methodologies(self, method1: str, method2: str) -> str:
         """Compare two methodologies"""
@@ -65,8 +67,132 @@ class GraphQueryEngine:
         - Recent developments
         """
         return str(self.query_engine.query(query))
+    
+    
+    def summarize_entire_graph(self) -> str:
+        """Summarize complete graph with all references"""
+        # Step 1: Generate narrative summary
+        narrative_query = """
+        Compose a comprehensive literature review summarizing the entire research graph.
+        Structure your response with these sections:
+        
+        Literature Review
+        
+        Introduction
+        [Provide an overview of the entire research domain and key themes]
+        
+        [Organize content by major research themes/topics - create subheadings for each]
+        [For each theme: summarize key papers, methodologies, and findings]
+        
+        Conclusion
+        [Synthesize main insights and suggest future research directions]
+        
+        Note: Do not include references in the narrative. We will add them separately.
+        """
+        narrative = str(self.query_engine.query(narrative_query))
+        
+        # Step 2: Get ALL papers from the graph
+        papers = self.get_all_papers()
+        
+        # Step 3: Format references
+        references = self.format_references(papers)
+        
+        return f"{narrative}\n\nReferences\n\n{references}"
+    
+    
+    def get_all_papers(self) -> List[Dict]:
+        """Retrieve all papers from Neo4j graph"""
+        cypher_query = """
+        MATCH (p:Paper)
+        RETURN p.title AS title, 
+               p.authors AS authors, 
+               p.year AS year, 
+               p.doi AS doi,
+               p.journal AS journal,
+               p.citations_count AS citations
+        ORDER BY citations DESC
+        """
+        return self.graph_store.query(cypher_query)
+    
+    def format_references(self, papers: List[Dict]) -> str:
+        """Format paper references in academic style"""
+        formatted = []
+        for paper in papers:
+            authors = ", ".join(paper['authors']) if paper.get('authors') else "Unknown"
+            year = paper.get('year', 'n.d.')
+            title = paper.get('title', 'Untitled')
+            journal = paper.get('journal', '')
+            doi = paper.get('doi', '')
+            
+            # Create reference entry
+            ref = f"{authors} ({year}). {title}. {journal}"
+            if doi:
+                ref += f". {doi}"
+            formatted.append(ref)
+        
+        return "\n".join(formatted)
 
 
+
+class EnhancedGraphQueryEngine(GraphQueryEngine):
+    def __init__(self, neo_config: dict, weaviate_config: dict):
+        super().__init__(neo_config, weaviate_config)
+        
+        # Add hybrid query capability
+        self.hybrid_engine = self._create_hybrid_engine()
+    
+    def _create_hybrid_engine(self):
+        """Create an engine that combines graph and vector search"""
+        from llama_index.core.query_engine import RetrieverQueryEngine
+        from llama_index.core.retrievers import VectorIndexRetriever, KGTableRetriever
+        
+        # Vector retriever (Weaviate)
+        vector_retriever = VectorIndexRetriever(
+            index=self.vector_store,
+            similarity_top_k=3
+        )
+        
+        # Knowledge Graph retriever (Neo4j)
+        kg_retriever = KGTableRetriever(
+            storage_context=self.storage_context,
+            query_templates={
+                "keyword_search": 
+                    "MATCH (p:Paper)-[:HAS_KEYWORD]->(k:Keyword) "
+                    "WHERE toLower(k.name) CONTAINS toLower('{query}') "
+                    "RETURN p"
+            }
+        )
+        
+        # Hybrid query engine
+        return RetrieverQueryEngine.from_args(
+            retriever=[vector_retriever, kg_retriever],
+            response_mode="tree_summarize"
+        )
+    
+    def query(self, question: str) -> str:
+        """Handle natural language queries with hybrid retrieval"""
+        response = self.hybrid_engine.query(question)
+        return self._format_response(response)
+    
+    def _format_response(self, response) -> str:
+        """Format response with references"""
+        if not hasattr(response, 'source_nodes'):
+            return str(response)
+            
+        # Extract references from source nodes
+        refs = []
+        for node in response.source_nodes:
+            if 'title' in node.metadata:
+                ref = (
+                    f"{node.metadata.get('authors', ['Unknown'])[0]} et al. "
+                    f"({node.metadata.get('year', 'n.d.')}). "
+                    f"\"{node.metadata['title']}\""
+                )
+                if 'doi' in node.metadata:
+                    ref += f" [DOI: {node.metadata['doi']}]"
+                refs.append(ref)
+        
+        return f"{response}\n\nReferences:\n" + "\n".join(refs)
 
 
 

@@ -5,6 +5,8 @@ from collections import defaultdict
 import networkx as nx
 from .nodes import KeywordNode, AuthorNode, NodeType, EntityNode, RichPaperNode
 from .relationships import Relationship, RelationshipType
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
 
 
 
@@ -16,6 +18,7 @@ class GraphBuilder:
         self.nodes_registry = {}
         self.entity_counters = defaultdict(int)  # Track entity frequencies
         self.paper_lookup = {}  # Fast paper lookup by title/doi
+        self.paper_features = {} 
         
     def add_node(self, node) -> None:
         """Add a node to the graph with duplicate prevention."""
@@ -33,30 +36,344 @@ class GraphBuilder:
         )
     
     def build_from_dataframe(self, df: pd.DataFrame) -> nx.MultiDiGraph:
-        """Build optimized graph from DataFrame with all fields."""
+        """Build graph with paper-to-paper relationships."""
         
-        # First pass: Create all paper nodes with rich information
+        # First pass: Create all paper nodes
         for idx, row in df.iterrows():
             paper_node = self._create_rich_paper_node(idx, row)
             self.add_node(paper_node)
             
-            # Build lookup mappings
-            self.paper_lookup[row['Title'].lower().strip()] = paper_node.id
-            if pd.notna(row.get('DOI/Link')):
-                self.paper_lookup[row['DOI/Link'].lower().strip()] = paper_node.id
+            # Store paper features for similarity calculation
+            self.paper_features[paper_node.id] = {
+                'authors': set(paper_node.authors),
+                'keywords': set(paper_node.keywords),
+                'institutions': set(paper_node.institutions),
+                'year': paper_node.year,
+                'journal': paper_node.journal,
+                'methodology': paper_node.methodology,
+                'application_area': paper_node.application_area,
+                'text_content': f"{paper_node.title} {paper_node.main_findings} {paper_node.methodology}"
+            }
         
         # Second pass: Create entity nodes and relationships
         for idx, row in df.iterrows():
             paper_id = f"paper_{idx}"
             self._create_entity_relationships(paper_id, row)
         
-        # Third pass: Create computed relationships
-        self._build_similarity_relationships()
+        # Third pass: Create paper-to-paper relationships
+        self._build_paper_similarity_relationships()
+        self._build_paper_collaboration_relationships()
+        self._build_paper_citation_relationships(df)
+        self._build_paper_temporal_relationships()
+        self._build_paper_journal_relationships()
+        
+        # Fourth pass: Create other computed relationships
         self._build_collaboration_relationships()
         self._build_institutional_relationships()
         
         return self.graph
     
+    def _build_paper_similarity_relationships(self):
+        """Create SIMILAR_TO relationships between papers based on content similarity."""
+        print("Building paper similarity relationships...")
+        
+        paper_ids = [pid for pid in self.paper_features.keys()]
+        if len(paper_ids) < 2:
+            return
+        
+        # Method 1: Text-based similarity using TF-IDF
+        text_contents = [self.paper_features[pid]['text_content'] for pid in paper_ids]
+        
+        try:
+            vectorizer = TfidfVectorizer(
+                max_features=1000,
+                stop_words='english',
+                ngram_range=(1, 2),
+                min_df=2
+            )
+            tfidf_matrix = vectorizer.fit_transform(text_contents)
+            similarity_matrix = cosine_similarity(tfidf_matrix)
+            
+            # Create relationships for papers with high similarity
+            similarity_threshold = 0.3  # Adjust as needed
+            relationships_added = 0
+            
+            for i, paper1_id in enumerate(paper_ids):
+                for j, paper2_id in enumerate(paper_ids):
+                    if i < j and similarity_matrix[i][j] > similarity_threshold:
+                        # Create bidirectional similarity relationship
+                        rel1 = Relationship(
+                            source_id=paper1_id,
+                            target_id=paper2_id,
+                            relationship_type=RelationshipType.SIMILAR_TO,
+                            weight=float(similarity_matrix[i][j]),
+                            properties={
+                                'similarity_score': float(similarity_matrix[i][j]),
+                                'similarity_type': 'content'
+                            }
+                        )
+                        rel2 = Relationship(
+                            source_id=paper2_id,
+                            target_id=paper1_id,
+                            relationship_type=RelationshipType.SIMILAR_TO,
+                            weight=float(similarity_matrix[i][j]),
+                            properties={
+                                'similarity_score': float(similarity_matrix[i][j]),
+                                'similarity_type': 'content'
+                            }
+                        )
+                        
+                        if self.add_relationship(rel1) and self.add_relationship(rel2):
+                            relationships_added += 2
+            
+            print(f"Added {relationships_added} content similarity relationships")
+            
+        except Exception as e:
+            print(f"Error in text similarity calculation: {e}")
+        
+        # Method 2: Feature-based similarity (keywords, authors, etc.)
+        self._build_feature_based_similarity(paper_ids)
+    
+    def _build_feature_based_similarity(self, paper_ids: List[str]):
+        """Build similarity based on shared features like keywords, authors."""
+        relationships_added = 0
+        
+        for i, paper1_id in enumerate(paper_ids):
+            for j, paper2_id in enumerate(paper_ids):
+                if i < j:
+                    paper1_features = self.paper_features[paper1_id]
+                    paper2_features = self.paper_features[paper2_id]
+                    
+                    # Calculate different types of similarity
+                    keyword_similarity = self._jaccard_similarity(
+                        paper1_features['keywords'],
+                        paper2_features['keywords']
+                    )
+                    
+                    author_similarity = self._jaccard_similarity(
+                        paper1_features['authors'],
+                        paper2_features['authors']
+                    )
+                    
+                    institution_similarity = self._jaccard_similarity(
+                        paper1_features['institutions'],
+                        paper2_features['institutions']
+                    )
+                    
+                    # Combined similarity score
+                    combined_score = (
+                        keyword_similarity * 0.4 +
+                        author_similarity * 0.3 +
+                        institution_similarity * 0.3
+                    )
+                    
+                    # Create relationship if similarity is high enough
+                    if combined_score > 0.2:  # Threshold for feature similarity
+                        rel = Relationship(
+                            source_id=paper1_id,
+                            target_id=paper2_id,
+                            relationship_type=RelationshipType.SIMILAR_TO,
+                            weight=combined_score,
+                            properties={
+                                'similarity_score': combined_score,
+                                'similarity_type': 'features',
+                                'keyword_similarity': keyword_similarity,
+                                'author_similarity': author_similarity,
+                                'institution_similarity': institution_similarity
+                            }
+                        )
+                        
+                        if self.add_relationship(rel):
+                            relationships_added += 1
+        
+        print(f"Added {relationships_added} feature-based similarity relationships")
+    
+    def _build_paper_collaboration_relationships(self):
+        """Create COLLABORATES_WITH relationships between papers sharing authors."""
+        print("Building paper collaboration relationships...")
+        
+        # Group papers by shared authors
+        author_papers = defaultdict(set)
+        
+        for paper_id, features in self.paper_features.items():
+            for author in features['authors']:
+                if author:  # Skip empty authors
+                    author_papers[author].add(paper_id)
+        
+        relationships_added = 0
+        
+        # Create collaboration relationships between papers with shared authors
+        for author, papers in author_papers.items():
+            if len(papers) > 1:
+                papers_list = list(papers)
+                for i, paper1_id in enumerate(papers_list):
+                    for j, paper2_id in enumerate(papers_list):
+                        if i < j:
+                            rel = Relationship(
+                                source_id=paper1_id,
+                                target_id=paper2_id,
+                                relationship_type=RelationshipType.COLLABORATES_WITH,
+                                weight=1.0,
+                                properties={
+                                    'shared_author': author,
+                                    'collaboration_type': 'author'
+                                }
+                            )
+                            
+                            if self.add_relationship(rel):
+                                relationships_added += 1
+        
+        print(f"Added {relationships_added} paper collaboration relationships")
+    
+    def _build_paper_citation_relationships(self, df: pd.DataFrame):
+        """Build citation relationships if citation data is available."""
+        print("Building paper citation relationships...")
+        
+        # This would need actual citation data
+        # For now, we'll create hypothetical citations based on year and similarity
+        relationships_added = 0
+        
+        paper_years = {}
+        for idx, row in df.iterrows():
+            paper_id = f"paper_{idx}"
+            year = self._safe_int_conversion(row.get('Year'), 0)
+            if year > 0:
+                paper_years[paper_id] = year
+        
+        # Create citation relationships (newer papers cite older ones)
+        for paper1_id, year1 in paper_years.items():
+            for paper2_id, year2 in paper_years.items():
+                if paper1_id != paper2_id and year1 > year2:
+                    # Check if papers are similar enough to warrant citation
+                    if paper1_id in self.paper_features and paper2_id in self.paper_features:
+                        features1 = self.paper_features[paper1_id]
+                        features2 = self.paper_features[paper2_id]
+                        
+                        keyword_similarity = self._jaccard_similarity(
+                            features1['keywords'],
+                            features2['keywords']
+                        )
+                        
+                        # Create citation if there's topical similarity and reasonable time gap
+                        if keyword_similarity > 0.3 and (year1 - year2) <= 10:
+                            rel = Relationship(
+                                source_id=paper1_id,
+                                target_id=paper2_id,
+                                relationship_type=RelationshipType.CITES,
+                                weight=1.0,
+                                properties={
+                                    'year_gap': year1 - year2,
+                                    'topical_similarity': keyword_similarity
+                                }
+                            )
+                            
+                            if self.add_relationship(rel):
+                                relationships_added += 1
+        
+        print(f"Added {relationships_added} citation relationships")
+    
+    def _build_paper_temporal_relationships(self):
+        """Build temporal relationships between papers in the same field."""
+        print("Building temporal relationships...")
+        
+        # Group papers by application area and year
+        area_year_papers = defaultdict(lambda: defaultdict(list))
+        
+        for paper_id, features in self.paper_features.items():
+            year = features['year']
+            app_area = features['application_area']
+            if year > 0 and app_area:
+                area_year_papers[app_area][year].append(paper_id)
+        
+        relationships_added = 0
+        
+        # Create temporal relationships within the same application area
+        for app_area, year_papers in area_year_papers.items():
+            years = sorted(year_papers.keys())
+            
+            for i, year1 in enumerate(years):
+                for year2 in years[i+1:i+3]:  # Connect to next 2 years only
+                    if year2 - year1 <= 3:  # Within 3 years
+                        for paper1_id in year_papers[year1]:
+                            for paper2_id in year_papers[year2]:
+                                rel = Relationship(
+                                    source_id=paper1_id,
+                                    target_id=paper2_id,
+                                    relationship_type=RelationshipType.TEMPORAL_SUCCESSOR,
+                                    weight=1.0 / (year2 - year1),  # Closer years have higher weight
+                                    properties={
+                                        'year_gap': year2 - year1,
+                                        'application_area': app_area
+                                    }
+                                )
+                                
+                                if self.add_relationship(rel):
+                                    relationships_added += 1
+        
+        print(f"Added {relationships_added} temporal relationships")
+    
+    def _build_paper_journal_relationships(self):
+        """Build relationships between papers in the same journal/conference."""
+        print("Building journal-based relationships...")
+        
+        # Group papers by journal
+        journal_papers = defaultdict(list)
+        
+        for paper_id, features in self.paper_features.items():
+            journal = features['journal']
+            if journal and journal.strip():
+                journal_papers[journal].append(paper_id)
+        
+        relationships_added = 0
+        
+        # Create relationships between papers in the same journal
+        for journal, papers in journal_papers.items():
+            if len(papers) > 1:
+                for i, paper1_id in enumerate(papers):
+                    for j, paper2_id in enumerate(papers):
+                        if i < j:
+                            rel = Relationship(
+                                source_id=paper1_id,
+                                target_id=paper2_id,
+                                relationship_type=RelationshipType.SAME_VENUE,
+                                weight=1.0,
+                                properties={
+                                    'journal': journal,
+                                    'relationship_type': 'same_venue'
+                                }
+                            )
+                            
+                            if self.add_relationship(rel):
+                                relationships_added += 1
+        
+        print(f"Added {relationships_added} journal-based relationships")
+    
+    def _jaccard_similarity(self, set1: Set, set2: Set) -> float:
+        """Calculate Jaccard similarity between two sets."""
+        if not set1 and not set2:
+            return 1.0
+        if not set1 or not set2:
+            return 0.0
+        
+        intersection = len(set1.intersection(set2))
+        union = len(set1.union(set2))
+        
+        return intersection / union if union > 0 else 0.0
+    
+    def _safe_int_conversion(self, value, default=0):
+        """Safely convert value to int."""
+        if pd.isna(value):
+            return default
+        try:
+            if isinstance(value, str):
+                value = value.strip()
+                if value.lower() in ['-', '', 'n/a', 'na', 'none', 'null']:
+                    return default
+            return int(float(value))
+        except (ValueError, TypeError):
+            return default
+
+
     def _create_rich_paper_node(self, idx: int, row: pd.Series) -> RichPaperNode:
         """Create a rich paper node with all consolidated information."""
         
@@ -75,6 +392,7 @@ class GraphBuilder:
                 return default
         
         return RichPaperNode(
+            node_type=NodeType.PAPER,
             id=f"paper_{idx}",
             title=str(row.get('Title', '')),
             year=safe_int_conversion(row.get('Year'), 0),
@@ -447,119 +765,3 @@ class GraphBuilder:
                 importance_scores[node_id] = self.graph.degree(node_id) / max(dict(self.graph.degree()).values()) if self.graph.degree() else 0
         
         return importance_scores
-
-'''
-class GraphBuilder:
-    """Builds knowledge graph from research paper data."""
-    
-    def __init__(self):
-        self.graph = nx.MultiDiGraph()
-        self.nodes_registry = {}
-        self.relationships = []
-        
-    def add_node(self, node) -> None:
-        """Add a node to the graph."""
-        if node.id not in self.nodes_registry:
-            self.nodes_registry[node.id] = node
-            self.graph.add_node(node.id, **node.to_dict())
-    
-    def add_relationship(self, relationship: Relationship) -> None:
-        """Add a relationship to the graph."""
-        self.relationships.append(relationship)
-        self.graph.add_edge(
-            relationship.source_id,
-            relationship.target_id,
-            **relationship.to_dict()
-        )
-    
-    def build_from_dataframe(self, df: pd.DataFrame) -> nx.MultiDiGraph:
-        """Build complete graph from preprocessed DataFrame."""
-        
-        
-        for idx, row in df.iterrows():
-            
-            # Create paper nodes
-            paper_node = PaperNode(
-                paper_id=f"paper_{idx}",
-                title=row['Title'],
-                year=row['Year'],
-                journal=row.get('Journal/Conference'),
-                doi=row.get('DOI/Link'),
-                methodology=row.get('Methodology'),
-                main_findings=row.get('Main Findings'),
-                citations_count=row.get('citations_count', 0)
-            )
-            self.add_node(paper_node)
-            
-            # Create keyword nodes and relationships
-            if 'keywords_cleaned' in row and row['keywords_cleaned']:
-                for keyword in row['keywords_cleaned']:
-                    keyword_node = KeywordNode(keyword)
-                    self.add_node(keyword_node)
-                    
-                    # Create HAS_KEYWORD relationship
-                    rel = Relationship(
-                        source_id=paper_node.id,
-                        target_id=keyword_node.id,
-                        relationship_type=RelationshipType.HAS_KEYWORD,
-                        properties={}
-                    )
-                    self.add_relationship(rel)
-            
-            # Create author nodes and relationships
-            if 'authors_list' in row and row['authors_list']:
-                for author_name in row['authors_list']:
-                    author_node = AuthorNode(author_name)
-                    self.add_node(author_node)
-                    
-                    # Create AUTHORED_BY relationship
-                    rel = Relationship(
-                        source_id=paper_node.id,
-                        target_id=author_node.id,
-                        relationship_type=RelationshipType.AUTHORED_BY,
-                        properties={}
-                    )
-                    self.add_relationship(rel)
-        
-        # Build keyword similarity relationships
-        self._build_keyword_similarities()
-        
-        return self.graph
-    
-    def _build_keyword_similarities(self, threshold: float = 0.3) -> None:
-        """Build similarity relationships between papers based on shared keywords."""
-        paper_keywords = defaultdict(set)
-        
-        # Collect keywords for each paper
-        for node_id, node_data in self.graph.nodes(data=True):
-            if node_data['type'] == 'paper':
-                paper_id = node_id
-                # Find connected keywords
-                for neighbor in self.graph.neighbors(node_id):
-                    neighbor_data = self.graph.nodes[neighbor]
-                    if neighbor_data['type'] == 'keyword':
-                        paper_keywords[paper_id].add(neighbor_data['keyword'])
-        
-        # Calculate similarities and create relationships
-        papers = list(paper_keywords.keys())
-        for i, paper1 in enumerate(papers):
-            for paper2 in papers[i+1:]:
-                keywords1 = paper_keywords[paper1]
-                keywords2 = paper_keywords[paper2]
-                
-                if keywords1 and keywords2:
-                    # Jaccard similarity
-                    intersection = len(keywords1.intersection(keywords2))
-                    union = len(keywords1.union(keywords2))
-                    similarity = intersection / union if union > 0 else 0
-                    
-                    if similarity >= threshold:
-                        rel = Relationship(
-                            source_id=paper1,
-                            target_id=paper2,
-                            relationship_type=RelationshipType.SIMILAR_TO,
-                            properties={'similarity_score': similarity},
-                            weight=similarity
-                        )
-                        self.add_relationship(rel)
-'''

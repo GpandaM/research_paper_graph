@@ -4,38 +4,126 @@ graph:
   enable_author_similarity: true
   enable_citation_relationships: true
 
-nebula:
-  host: "127.0.0.1"
-  port: 9669
-  user: "root"
-  password: "nebula"
-  space_name: "research_papers"
-  partition_num: 100
-  replica_factor: 1
-  storage_engine: "rocksdb"
-  # Schema definitions
-  vertex_types:
-    - name: "Paper"
-      properties:
-        - name: "title"
-          type: "string"
-        - name: "year"
-          type: "int"
-        - name: "keywords"
-          type: "string[]"
-        - name: "abstract"
-          type: "string"
-    - name: "Author"
-      properties:
-        - name: "name"
-          type: "string"
-  edge_types:
-    - name: "CITES"
-      properties:
-        - name: "year"
-          type: "int"
-    - name: "AUTHORED_BY"
-      properties: []
+neo4j:
+  # Connection settings
+  uri: "bolt://localhost:7687"
+  user: "neo4j"
+  password: "Vanya@28"  # Consider using environment variables for passwords in production
+  database: "neo4j"
+  initialize_schema: true
+  connection_timeout: 30  # seconds
+  max_connection_pool_size: 50
+  
+  # Schema configuration
+  schema:
+    # Node labels with recommended properties
+    node_labels:
+      Paper:
+        properties:
+          - name: "title"
+            type: "string"
+            indexed: true
+            fulltext: true
+          - name: "year"
+            type: "integer"
+            indexed: true
+          - name: "doi"
+            type: "string"
+            unique: true
+          - name: "citations_count"
+            type: "integer"
+            indexed: true
+            
+      Author:
+        properties:
+          - name: "name"
+            type: "string"
+            unique: true
+            indexed: true
+          - name: "orcid"
+            type: "string"
+            unique: false
+            
+      Institution:
+        properties:
+          - name: "name"
+            type: "string"
+            indexed: true
+          - name: "country"
+            type: "string"
+            
+      Journal:
+        properties:
+          - name: "name"
+            type: "string"
+            indexed: true
+          - name: "issn"
+            type: "string"
+            unique: true
+            
+      Keyword:
+        properties:
+          - name: "keyword"
+            type: "string"
+            unique: true
+            indexed: true
+          - name: "normalized_form"
+            type: "string"
+            indexed: true
+    
+    # Relationship types with optional properties
+    relationship_types:
+      CITES:
+        properties:
+          - name: "citation_context"
+            type: "string"
+          - name: "year"
+            type: "integer"
+            
+      AUTHORED_BY:
+        properties:
+          - name: "author_position"
+            type: "integer"
+            
+      AFFILIATED_WITH:
+        properties:
+          - name: "start_year"
+            type: "integer"
+          - name: "end_year"
+            type: "integer"
+            
+      PUBLISHED_IN:
+        properties:
+          - name: "volume"
+            type: "string"
+          - name: "issue"
+            type: "string"
+            
+      HAS_KEYWORD:
+        properties:
+          - name: "weight"
+            type: "float"
+            
+      SIMILAR_TO:
+        properties:
+          - name: "similarity_score"
+            type: "float"
+          - name: "algorithm"
+            type: "string"
+            
+      COLLABORATES_WITH:
+        properties:
+          - name: "collaboration_count"
+            type: "integer"
+          - name: "last_collaboration_year"
+            type: "integer"
+    
+    # Full-text search configuration
+    fulltext_indexes:
+      - name: "paper_content_index"
+        labels: ["Paper"]
+        properties: ["title", "abstract", "keywords", "main_findings"]
+        analyzer: "english"  # Language-specific analyzer
 
 weaviate:
   host: "localhost"
