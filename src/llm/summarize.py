@@ -7,9 +7,11 @@ from llama_index.embeddings.ollama import OllamaEmbedding
 from llama_index.core import Settings
 from typing import List, Dict, Any
 import json
+import time
 from ollama import Client
 import requests
 from time import sleep
+
 
 class ResearchSummarizer:
     def __init__(self, neo4j_config: dict):
@@ -211,6 +213,7 @@ class ResearchSummarizer:
         """Summarize a chunk of papers"""
         paper_texts = []
         for paper in papers:
+            paper_text = f"Paper_id: {paper.get('id', 'N/A')}\n"
             paper_text = f"Title: {paper.get('title', 'N/A')}\n"
             paper_text += f"Main_findings: {paper.get('main_findings', 'N/A')[:500]}...\n"
             paper_text += f"equations_models: {paper.get('equations_models', 'N/A')}\n"
@@ -230,6 +233,7 @@ class ResearchSummarizer:
         Provide a concise summary in 3-5 senetences highlighting:
         1. Key research themes and methodologies
         2. Main findings
+        3. Include paper_ids of the research paper you have referred in a list like [paper_1, paper_32]
         """
         
         print(f"      summarize_paper_chunk sending {len(prompt.split())} words in prompt")
@@ -251,7 +255,7 @@ class ResearchSummarizer:
         # Try with retries
         max_retries = 3
         retry_delay = 5  # seconds
-        
+        t1 = time.time()
         for attempt in range(max_retries):
             try:
                 response = requests.post(
@@ -265,6 +269,7 @@ class ResearchSummarizer:
                     result = response.json()
                     if result.get("done", False):
                         print(f"Summary generated successfully {result}")
+                        print(f"============== it took {time.time()-t1} seconds to get response of {len(prompt.split())} words!!")
                         return result.get("response") #, "No summary generated")
                     else:
                         print("Incomplete response from Ollama")
@@ -278,6 +283,8 @@ class ResearchSummarizer:
                 print(f"Retrying in {retry_delay} seconds...")
                 sleep(retry_delay)
                 retry_delay *= 2  # Exponential backoff
+        
+        
         
         return "Failed to generate summary after multiple attempts"
         
@@ -337,7 +344,7 @@ class ResearchSummarizer:
         print(f" themes are {themes}")
         
         # Split papers into chunks
-        paper_chunks = self.chunk_papers(all_papers, chunk_size=2)
+        paper_chunks = self.chunk_papers(all_papers, chunk_size=3)
         
         paper_chunks = paper_chunks[:3] ## for testing keeping only 3 sets now
 
