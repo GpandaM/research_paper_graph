@@ -3,6 +3,8 @@ from src_new.graph_builder import GraphBuilder
 from src_new.data.preprocessor import DataPreprocessor
 from src_new.data.loader import DataLoader
 from src_new.logger import setup_logger
+from src_new.semantic_relation import SemanticRelationshipGenerator
+from src_new.literature_review import LiteratureReviewGenerator
 
 import pandas as pd
 import logging
@@ -73,17 +75,18 @@ class ResearchGraphPipeline:
 
         # Build knowledge graph
         graph_builder = GraphBuilder(self.graph_store)
-        graph_builder.build_graph(df_processed)
+        # graph_builder.build_graph(df_processed)
         
         # # Add semantic relationships
         # semantic_generator = SemanticRelationshipGenerator(self.graph_store)
         # semantic_generator.generate_embeddings()
         # semantic_generator.create_semantic_relationships()
-        # semantic_generator.create_limitation_relationships()
+        # ## semantic_generator.create_limitation_relationships() ## . this step takes time, to do : make it optimized 
         
         # # Generate literature review
-        # review_generator = LiteratureReviewGenerator(self.graph_store)
-        # literature_review = review_generator.generate_review()
+        review_generator = LiteratureReviewGenerator(self.graph_store)
+        literature_review = review_generator.generate_review()
+        print(literature_review)
         
         # # Save output
         # if output_path:

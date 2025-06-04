@@ -133,7 +133,8 @@ class Neo4jGraphStore:
         except:
             # Fallback if APOC is not available
             counts = {}
-            for rel_type in ['AUTHORED_BY', 'AFFILIATED_WITH', 'PUBLISHED_IN', 'HAS_KEYWORD', 'TEMPORAL_SUCCESSOR']:
+            for rel_type in ['AUTHORED_BY', 'AFFILIATED_WITH', 'PUBLISHED_IN', 'HAS_KEYWORD', 
+                             'TEMPORAL_SUCCESSOR', 'SEMANTIC_SIMILAR', 'ADDRESSES_LIMITATION']:
                 query = f"MATCH ()-[r:`{rel_type}`]->() RETURN count(r) as count"
                 result = self.execute(query)
                 counts[rel_type] = result[0]['count'] if result else 0
