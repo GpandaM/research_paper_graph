@@ -6,10 +6,10 @@ graph:
 
 neo4j:
   # Connection settings
-  uri: "bolt://localhost:7687"
+  uri: "neo4j://localhost:7687"
   user: "neo4j"
-  password: "Vanya@28"  # Consider using environment variables for passwords in production
-  database: "neo4j"
+  password: "Sundeep@123"  # Consider using environment variables for passwords in production
+  database: "paperdb"
   initialize_schema: true
   connection_timeout: 30  # seconds
   max_connection_pool_size: 50
@@ -126,6 +126,7 @@ neo4j:
         analyzer: "english"  # Language-specific analyzer
 
 weaviate:
+  url: "http://localhost:8080"
   host: "localhost"
   port: 8080
   scheme: "http"

@@ -15,34 +15,34 @@ class RelationshipType(Enum):
     RELATED_TO = "RELATED_TO"
     BELONGS_TO_THEME = "BELONGS_TO_THEME"
     SHARES_AUTHOR = "SHARES_AUTHOR"
-    SHARES_METHODOLOGY = "SHARES_METHODOLOGY"
-    SHARES_APPLICATION = "SHARES_APPLICATION"
-    SIMILAR_FINDINGS = "SIMILAR_FINDINGS"
-    COMPLEMENTARY_APPROACH = "COMPLEMENTARY_APPROACH"
-    ADDRESSES_GAP = "ADDRESSES_GAP"
+    SHARES_INSTITUTION = "SHARES_INSTITUTION"
+    PUBLISHED_IN = "PUBLISHED_IN"
+    AFFILIATED_WITH = "AFFILIATED_WITH"
 
+    @classmethod
+    def has_value(cls, value):
+        return value in cls._value2member_map_
 
 @dataclass
-class ExplainedRelationship:
+class Relationship:
+    """Representation of a relationship between nodes"""
     source_id: str
     target_id: str
     relationship_type: RelationshipType
     weight: float = 1.0
-    explanation: str = ""
+    explanation: Optional[str] = None
     confidence: float = 1.0
     evidence: List[str] = field(default_factory=list)
-    relationship_category: str = ""
     properties: Dict = field(default_factory=dict)
     
     def to_dict(self) -> Dict:
         return {
             'source_id': self.source_id,
             'target_id': self.target_id,
-            'type': self.relationship_type.value,
+            'relationship_type': self.relationship_type.value,
             'weight': self.weight,
             'explanation': self.explanation,
             'confidence': self.confidence,
             'evidence': self.evidence,
-            'category': self.relationship_category,
-            **self.properties
+            'properties': self.properties
         }

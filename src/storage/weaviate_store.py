@@ -23,8 +23,6 @@ class WeaviateVectorStore:
     def __init__(self):
         # Initialize schema manager but don't connect yet
         pass
-        # self.schema_manager = WeaviateSetup()
-        # self.schema_manager.create_research_paper_schema()
         
     def _get_client(self):
         """Helper method to get a client connection"""
@@ -113,6 +111,10 @@ class WeaviateVectorStore:
                 print("First failure:", coll.batch.failed_objects[0])
             else:
                 print("✅ All batch objects inserted cleanly.")
+
+            ## list all classes/collections
+            # for collection in client.collections.list_all():
+            #     print(collection.name)
 
 
 

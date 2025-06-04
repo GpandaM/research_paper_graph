@@ -1,18 +1,24 @@
 import logging
 from pathlib import Path
 import argparse
+import asyncio
+from contextlib import asynccontextmanager
 import pandas as pd
 import networkx as nx
 from .data.loader import DataLoader
 from .data.preprocessor import DataPreprocessor
 from .graph.builder import GraphBuilder
 from .llm.integrator import GraphQueryEngine
+from .llm.neo_retrieval import Neo4jRetrievalEngine
 from .utils.config import ConfigManager
 from .utils.logger import setup_logger
 from .storage.neo_store import Neo4jGraphStore
 from .storage.weaviate_schema import WeaviateSetup
 from .storage.weaviate_store import WeaviateVectorStore
 from .graph.nodes import RichPaperNode
+
+import warnings
+warnings.filterwarnings("ignore")  # Ignore all warnings
 
 class ResearchGraphApplication:
     """Main application class for the research paper knowledge graph."""
@@ -124,7 +130,7 @@ class ResearchGraphApplication:
                 print(f"Error: {e}")
     
 
-    def run(self, file_path: str, interactive: bool = True):
+    async def run(self, file_path: str, interactive: bool = True):
         
         ## --------------------------------------------------------------------------------------------- ##
         
@@ -148,19 +154,19 @@ class ResearchGraphApplication:
 
 
         ## ------------------------------ verify the insertion of weaviate ------------------------------ ##
-        weaviate_store = WeaviateVectorStore()
+        # weaviate_store = WeaviateVectorStore()
         # weaviate_store.test_single_insert()
-        weaviate_store.peek_a_boo()
+        # weaviate_store.peek_a_boo()
 
         # 1. Check sample data
         # weaviate_store.verify_weaviate_data(sample_size=3)
 
         # 2. Verify total count
-        inserted_count = weaviate_store.count_inserted_papers()
-        print(f"Expected: 100, Inserted: {inserted_count}")
+        # inserted_count = weaviate_store.count_inserted_papers()
+        # print(f"Expected: 100, Inserted: {inserted_count}")
 
         # 3. Search for specific papers
-        weaviate_store.search_paper_by_title("Euler-Lagrange")
+        # weaviate_store.search_paper_by_title("Euler-Lagrange")
 
         # 4. Check vectors (use an ID from your sample)
         # sample_id = "100"  # Get from verify_weaviate_data()
@@ -170,13 +176,56 @@ class ResearchGraphApplication:
         # weaviate_store.generate_data_quality_report()
         ## --------------------------------------------------------------------------------------------- ##
     
-        
+     
         # Initialize query engine
-        # neo4j_config = self.config.get('neo4j')
-        # weaviate_config = self.config.get('weaviate')
-        # self.query_engine = GraphQueryEngine(neo4j_config, weaviate_config)
+        neo4j_config = self.config.get('neo4j')
+        weaviate_config = self.config.get('weaviate')
+
+        async with self.get_query_engine(neo4j_config, weaviate_config) as query_engine:
+            res = await query_engine.summarize("machine learning")
+            print(res)
+
+        # print(self.query_engine.summarize("machine learning"))
+
+        
+        # try:
+        #     # Initialize the engine
+        #     engine = Neo4jRetrievalEngine(neo4j_config)
+            
+        #     # Test connection
+        #     if engine.test_connection():
+        #         print("✅ Neo4j connection successful")
+                
+        #         # Get graph statistics
+        #         stats = engine.get_graph_stats()
+        #         print(f"📊 Graph stats: {stats}")
+                
+        #         # Example query
+        #         result = await engine.query("What papers are about machine learning?")
+        #         print(f"🔍 Query result: {result}")
+                
+        #     else:
+        #         print("❌ Neo4j connection failed")
+                
+        # except Exception as e:
+        #     print(f"❌ Error: {e}")
+        
+        # finally:
+        #     if 'engine' in locals():
+        #         engine.close()
 
         ## --------------------------------------------------------------------------------------------- ##
+
+
+    @asynccontextmanager
+    async def get_query_engine(self, neo_config: dict, weav_config: dict):
+        engine = GraphQueryEngine(neo_config, weav_config)
+        try:
+            await engine.initialize()
+            yield engine
+        finally:
+            await engine.close()
+    
 
     def export_to_neo4j(self, graph: nx.MultiDiGraph):
         neo4j_store = Neo4jGraphStore(self.config.get('neo4j'))
@@ -186,10 +235,11 @@ class ResearchGraphApplication:
             node_data = {
                 'id': node_id,
                 'type': data.get('type', ''),
-                'properties': {
-                    **data,
-                    'id': node_id  # Ensure ID is included in properties
-                }
+                **{k: v for k, v in data.items() if k != 'node'}  # Exclude the RichPaperNode object
+                # 'properties': {
+                #     **data,
+                #     'id': node_id  # Ensure ID is included in properties
+                # }
             }
             print("\n\n")
             print(f"{node_id}, and the type is {data.get('type', '')}")
@@ -318,8 +368,6 @@ def main():
     parser = argparse.ArgumentParser(description="Research Paper Knowledge Graph")
     parser.add_argument("--file", required=True, help="Path to Excel/CSV file")
     parser.add_argument("--config", default="config/config.yaml", help="Config file path")
-    # parser.add_argument("--no-interactive", action="store_true", help="Disable interactive mode")
-    # Better approach: Use mutually exclusive group
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--interactive", action="store_true", default=True, 
                            help="Run in interactive mode (default)")
@@ -331,8 +379,6 @@ def main():
     
     app = ResearchGraphApplication(args.config)
 
-    # app.run(args.file, interactive=not args.no_interactive)
-
     if args.no_interactive:
         interactive_mode = False
         print("Running in NON-INTERACTIVE mode")
@@ -341,7 +387,8 @@ def main():
         print("Running in INTERACTIVE mode")
 
     print(f"Interactive mode: {interactive_mode}")
-    app.run(args.file, interactive=interactive_mode)
+    # app.run(args.file, interactive=interactive_mode)
+    asyncio.run(app.run(args.file, interactive=interactive_mode))
 
 
 if __name__ == "__main__":
