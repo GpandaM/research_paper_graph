@@ -88,7 +88,7 @@ class ResearchGraphPipeline:
         literature_review = review_generator.generate_review()
         print(literature_review)
         
-        # # Save output
+        # Save output
         # if output_path:
         #     with open(output_path, "w") as f:
         #         json.dump(literature_review, f, indent=2)

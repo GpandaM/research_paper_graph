@@ -104,7 +104,7 @@ class LiteratureReviewGenerator:
             papers.append(paper)
         
 
-        self.logger.info(f"{'=='*50} Papers are retrived")
+        self.logger.info(f"{'=='*50} {len(papers)} Papers are retrived")
         return {"papers": papers, "total_papers": len(papers)}
     
     # def _extract_temporal_trends(self) -> Dict:
@@ -197,7 +197,18 @@ class LiteratureReviewGenerator:
     
     def _extract_research_communities(self) -> Dict:
         """Extract research communities using GDS algorithms"""
-        # First, create a projection for community detection
+        remove_projection = """
+        CALL gds.graph.exists('literature-network') YIELD exists
+        WITH exists
+        CALL apoc.do.when(
+        exists,
+        'CALL gds.graph.drop("literature-network", false)',
+        'RETURN "Graph does not exist" AS message',
+        {}
+        ) YIELD value
+        RETURN value;
+        """
+
         projection_query = """
         CALL gds.graph.project(
             'literature-network',
@@ -209,12 +220,14 @@ class LiteratureReviewGenerator:
             }
         )
         """
-        
+
+        # Executing separately, catching projection errors specifically
         try:
+            self.graph_store.execute(remove_projection)
             self.graph_store.execute(projection_query)
-        except:
-            # Projection might already exist
-            pass
+        except Exception as e:
+            self.logger.error(f"Issue with projection: {e}")
+
         
         # Run Louvain community detection
         community_query = """
@@ -369,11 +382,12 @@ class LiteratureReviewGenerator:
         Write in an academic tone, approximately 100-150 words.
         """
         
-        return self._call_ollama(prompt, context)
+        return (self._call_ollama(prompt, context), paper_data)
     
     def _generate_research_areas(self) -> str:
         """Generate research areas analysis"""
         communities = self._extract_research_communities()
+        self.logger.info(f"communities created")
         paper_data = self._extract_paper_data()
         
         # Extract application areas and keywords
@@ -496,18 +510,44 @@ class LiteratureReviewGenerator:
         
         return self._call_ollama(prompt, context)
     
+    def format_references(self, papers: List[Dict]) -> str:
+        """Format papers as references"""
+        references = []
+        for i, paper in enumerate(papers, 1):
+            authors = paper.get('authors', 'Unknown')
+            year = paper.get('year', 'N/A')
+            title = paper.get('title', 'Untitled')
+            doi = paper.get('doi', '')
+            ref = f"[{i}] {authors} ({year}). {title}."
+            if doi:
+                ref += f" DOI: {doi}"
+            references.append(ref)
+        return "\n".join(references)
+    
+    
+    
     def generate_review(self) -> Dict[str, str]:
         """Generate comprehensive literature review"""
         self.logger.info("Generating literature review...")
         
         try:
+            intro, paper_data = self._generate_introduction()
+            top_papers = sorted(
+                paper_data["papers"], 
+                key=lambda x: (x.get('citations_count', 0), x.get('year', 0)), 
+                reverse=True
+            )
+
+            top_40_percent = top_papers[:int(len(top_papers) * 0.4)]
+            
+            
             review = {
-                # "introduction": self._generate_introduction(),
-                
-                # "research_areas": self._generate_research_areas(),
-                # "methodologies": self._generate_methodologies(),
-                # "contributions": self._generate_key_contributions(),
-                # "future_directions": self._generate_future_directions()
+                "introduction": intro,
+                "research_areas": self._generate_research_areas(),
+                "methodologies": self._generate_methodologies(),
+                "contributions": self._generate_key_contributions(),
+                "future_directions": self._generate_future_directions(),
+                "references": self.format_references(top_40_percent)
             }
             
             self.logger.info("Literature review generation completed successfully")
@@ -522,7 +562,8 @@ class LiteratureReviewGenerator:
                 "research_areas": "",
                 "methodologies": "",
                 "contributions": "",
-                "future_directions": ""
+                "future_directions": "",
+                "references":""
             }
     
     def export_review(self, review: Dict[str, str], output_path: str = "literature_review.md"):
@@ -536,7 +577,8 @@ class LiteratureReviewGenerator:
                     ("Research Areas and Themes", "research_areas"),
                     ("Methodological Approaches", "methodologies"),
                     ("Key Contributions and Findings", "contributions"),
-                    ("Future Research Directions", "future_directions")
+                    ("Future Research Directions", "future_directions"),
+                    ("References", "references")
                 ]
                 
                 for section_title, section_key in sections:
