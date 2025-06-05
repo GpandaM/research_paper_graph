@@ -13,8 +13,16 @@ class Neo4jSchemaManager:
             self.create_constraints()
             self.create_indexes()
             self.create_fulltext_indexes()
+            # Try vector index but continue if fails
+            try:
+                if self.create_vector_indexes():
+                    self.logger.info("Vector indexes enabled")
+            except Exception as e:
+                self.logger.warning(f"Vector indexes not available: {e}")
+            
             self.logger.info("Database schema initialized successfully")
             return True
+        
         except Exception as e:
             self.logger.error(f"Schema initialization failed: {str(e)}")
             return False
@@ -86,3 +94,35 @@ class Neo4jSchemaManager:
                 """
             
             self.store.execute(query)
+
+
+    def create_vector_indexes(self):
+        """Create vector indexes for embedding-based search (Neo4j 5.11+)"""
+        try:
+            # Check if vector index is supported
+            version_query = "CALL dbms.components() YIELD versions"
+            result = self.store.execute(version_query)
+            neo4j_version = result[0]["versions"][0]  # Gets first version number
+            
+            if not neo4j_version.startswith("5."):
+                self.logger.warning(f"Vector indexes require Neo4j 5.11+. Current version: {neo4j_version}")
+                return False
+
+            ## Ollama's nomic-embed-text uses 768 by default --> change it you change the model
+            ## cosine similarity is most common for text
+            query = """
+            CREATE VECTOR INDEX paper_embeddings_index IF NOT EXISTS
+            FOR (p:Paper) ON (p.embedding)
+            OPTIONS {
+                indexConfig: {
+                    `vector.dimensions`: 768,
+                    `vector.similarity_function`: 'cosine'
+                }
+            }
+            """
+            self.store.execute(query)
+            self.logger.info("Vector index created successfully")
+            return True
+        except Exception as e:
+            self.logger.error(f"Vector index creation failed: {str(e)}")
+            return False

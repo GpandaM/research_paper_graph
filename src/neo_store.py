@@ -139,6 +139,26 @@ class Neo4jGraphStore:
                 result = self.execute(query)
                 counts[rel_type] = result[0]['count'] if result else 0
             return counts
+    
+    def log_database_stats(self):
+        """Log current database statistics"""
+        self.logger.info("DATABASE STATS:")
+        
+        # Node counts
+        node_counts = self.get_node_counts()
+        self.logger.info("NODES IN DATABASE:")
+        for node_type, count in node_counts.items():
+            self.logger.info(f"  {node_type}: {count}")
+        
+        # Relationship counts
+        rel_counts = self.get_relationship_counts()
+        self.logger.info("RELATIONSHIPS IN DATABASE:")
+        if any(count > 0 for count in rel_counts.values()):
+            for rel_type, count in rel_counts.items():
+                if count > 0:
+                    self.logger.info(f"  {rel_type}: {count}")
+        else:
+            self.logger.warning("  NO RELATIONSHIPS FOUND!")
 
     def close(self):
         """Close the database connection"""

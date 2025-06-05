@@ -104,7 +104,7 @@ class GraphBuilder:
                 'doi': str(row.get('DOI', '')).strip() if pd.notna(row.get('DOI')) else None,
                 'main_findings': str(row.get('Main Findings', '')).strip() if pd.notna(row.get('Main Findings')) else None,
                 'equations_models': str(row.get('Equations/Models', '')).strip() if pd.notna(row.get('Equations/Models')) else None,
-                'application area': str(row.get('Application Area', '')).strip() if pd.notna(row.get('Application Area')) else None,
+                'application_area': str(row.get('Application Area', '')).strip() if pd.notna(row.get('Application Area')) else None,
                 'strengths': str(row.get('Strengths', '')).strip() if pd.notna(row.get('Strengths')) else None,
                 'limitations': str(row.get('Limitations', '')).strip() if pd.notna(row.get('Limitations')) else None,
                 'journal': str(row.get('Journal/Conference', '')).strip() if pd.notna(row.get('Journal/Conference')) else None,
@@ -316,25 +316,25 @@ class GraphBuilder:
             total = stats['success'] + stats['failed']
             self.logger.info(f"  {rel_type}: {stats['success']} created, {stats['failed']} failed (Total: {total})")
 
-    def _log_database_stats(self):
-        """Log current database statistics"""
-        self.logger.info("DATABASE STATS:")
+    # def _log_database_stats(self):
+    #     """Log current database statistics"""
+    #     self.logger.info("DATABASE STATS:")
         
-        # Node counts
-        node_counts = self.graph_store.get_node_counts()
-        self.logger.info("NODES IN DATABASE:")
-        for node_type, count in node_counts.items():
-            self.logger.info(f"  {node_type}: {count}")
+    #     # Node counts
+    #     node_counts = self.graph_store.get_node_counts()
+    #     self.logger.info("NODES IN DATABASE:")
+    #     for node_type, count in node_counts.items():
+    #         self.logger.info(f"  {node_type}: {count}")
         
-        # Relationship counts
-        rel_counts = self.graph_store.get_relationship_counts()
-        self.logger.info("RELATIONSHIPS IN DATABASE:")
-        if any(count > 0 for count in rel_counts.values()):
-            for rel_type, count in rel_counts.items():
-                if count > 0:
-                    self.logger.info(f"  {rel_type}: {count}")
-        else:
-            self.logger.warning("  NO RELATIONSHIPS FOUND!")
+    #     # Relationship counts
+    #     rel_counts = self.graph_store.get_relationship_counts()
+    #     self.logger.info("RELATIONSHIPS IN DATABASE:")
+    #     if any(count > 0 for count in rel_counts.values()):
+    #         for rel_type, count in rel_counts.items():
+    #             if count > 0:
+    #                 self.logger.info(f"  {rel_type}: {count}")
+        # else:
+        #     self.logger.warning("  NO RELATIONSHIPS FOUND!")
 
     def build_graph(self, df: pd.DataFrame):
         """Main method to orchestrate graph construction"""
@@ -360,17 +360,17 @@ class GraphBuilder:
             self.logger.info(f"Total tracked nodes: {len(self.created_nodes)}")
             
             # Create relationships
-            self.logger.info("PHASE 2: Creating relationships...")
+            self.logger.info("PHASE 2: Creating basic relationships...")
             self._create_all_relationships(df)
-            self._log_relationship_stats()
+            # self._log_relationship_stats()
             
-            # Final database stats
-            self.logger.info("PHASE 3: Final database statistics...")
-            self._log_database_stats()
+            # # Final database stats
+            # self.logger.info("PHASE 2: First layer database statistics...")
+            # self._log_database_stats()
             
-            self.logger.info("="*50)
-            self.logger.info("GRAPH CONSTRUCTION COMPLETED SUCCESSFULLY")
-            self.logger.info("="*50)
+            # self.logger.info("="*50)
+            # self.logger.info("First Phase GRAPH CONSTRUCTION COMPLETED SUCCESSFULLY")
+            # self.logger.info("="*50)
             
         except Exception as e:
             self.logger.error(f"Graph construction failed: {str(e)}")

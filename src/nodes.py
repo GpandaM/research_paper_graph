@@ -53,27 +53,27 @@ class RichPaperNode(BaseNode):
     publication_date: Optional[str] = None
     references: List[str] = field(default_factory=list)
     
-    def __post_init__(self):
-        self.node_type = NodeType.PAPER
-        self.properties = {
-            'title': self.title,
-            'year': self.year,
-            'authors': self.authors,
-            'keywords': self.keywords,
-            'institutions': self.institutions,
-            'journal': self.journal,
-            'methodology': self.methodology,
-            'main_findings': self.main_findings,
-            'equations_models': self.equations_models,
-            'application_area': self.application_area,
-            'strengths': self.strengths,
-            'limitations': self.limitations,
-            'citations_count': self.citations_count,
-            'doi': self.doi,
-            'abstract': self.abstract,
-            'publication_date': self.publication_date,
-            'references': self.references
-        }
+    # def __post_init__(self):
+    #     self.node_type = NodeType.PAPER
+    #     self.properties = {
+    #         'title': self.title,
+    #         'year': self.year,
+    #         'authors': self.authors,
+    #         'keywords': self.keywords,
+    #         'institutions': self.institutions,
+    #         'journal': self.journal,
+    #         'methodology': self.methodology,
+    #         'main_findings': self.main_findings,
+    #         'equations_models': self.equations_models,
+    #         'application_area': self.application_area,
+    #         'strengths': self.strengths,
+    #         'limitations': self.limitations,
+    #         'citations_count': self.citations_count,
+    #         'doi': self.doi,
+    #         'abstract': self.abstract,
+    #         'publication_date': self.publication_date,
+    #         'references': self.references
+    #     }
 
 @dataclass
 class KeywordNode(BaseNode):
@@ -84,20 +84,20 @@ class KeywordNode(BaseNode):
     normalized_form: Optional[str] = None
     category: Optional[str] = None
     
-    def __post_init__(self):
-        self.node_type = NodeType.KEYWORD
-        if self.display_name is None:
-            self.display_name = self.keyword
-        if self.normalized_form is None:
-            self.normalized_form = re.sub(r'\W+', '_', self.keyword).lower()
+    # def __post_init__(self):
+    #     self.node_type = NodeType.KEYWORD
+    #     if self.display_name is None:
+    #         self.display_name = self.keyword
+    #     if self.normalized_form is None:
+    #         self.normalized_form = re.sub(r'\W+', '_', self.keyword).lower()
             
-        self.properties = {
-            'keyword': self.keyword,
-            'display_name': self.display_name,
-            'frequency': self.frequency,
-            'normalized_form': self.normalized_form,
-            'category': self.category
-        }
+    #     self.properties = {
+    #         'keyword': self.keyword,
+    #         'display_name': self.display_name,
+    #         'frequency': self.frequency,
+    #         'normalized_form': self.normalized_form,
+    #         'category': self.category
+    #     }
 
 @dataclass
 class AuthorNode(BaseNode):
@@ -109,19 +109,19 @@ class AuthorNode(BaseNode):
     h_index: Optional[int] = None
     publications_count: Optional[int] = None
     
-    def __post_init__(self):
-        self.node_type = NodeType.AUTHOR
-        if self.normalized_name is None:
-            self.normalized_name = re.sub(r'[^a-zA-Z0-9]', '', self.name).lower()
+    # def __post_init__(self):
+    #     self.node_type = NodeType.AUTHOR
+    #     if self.normalized_name is None:
+    #         self.normalized_name = re.sub(r'[^a-zA-Z0-9]', '', self.name).lower()
             
-        self.properties = {
-            'name': self.name,
-            'normalized_name': self.normalized_name,
-            'institution': self.institution,
-            'orcid': self.orcid,
-            'h_index': self.h_index,
-            'publications_count': self.publications_count
-        }
+    #     self.properties = {
+    #         'name': self.name,
+    #         'normalized_name': self.normalized_name,
+    #         'institution': self.institution,
+    #         'orcid': self.orcid,
+    #         'h_index': self.h_index,
+    #         'publications_count': self.publications_count
+    #     }
 
 @dataclass
 class InstitutionNode(BaseNode):
@@ -132,18 +132,18 @@ class InstitutionNode(BaseNode):
     type: Optional[str] = None  # e.g., "University", "Company", "Research Lab"
     rank: Optional[int] = None
     
-    def __post_init__(self):
-        self.node_type = NodeType.INSTITUTION
-        if self.normalized_name is None:
-            self.normalized_name = re.sub(r'[^a-zA-Z0-9]', '', self.name).lower()
+    # def __post_init__(self):
+    #     self.node_type = NodeType.INSTITUTION
+    #     if self.normalized_name is None:
+    #         self.normalized_name = re.sub(r'[^a-zA-Z0-9]', '', self.name).lower()
             
-        self.properties = {
-            'name': self.name,
-            'normalized_name': self.normalized_name,
-            'country': self.country,
-            'type': self.type,
-            'rank': self.rank
-        }
+    #     self.properties = {
+    #         'name': self.name,
+    #         'normalized_name': self.normalized_name,
+    #         'country': self.country,
+    #         'type': self.type,
+    #         'rank': self.rank
+    #     }
 
 @dataclass
 class JournalNode(BaseNode):
@@ -155,16 +155,16 @@ class JournalNode(BaseNode):
     publisher: Optional[str] = None
     is_conference: bool = False
     
-    def __post_init__(self):
-        self.node_type = NodeType.JOURNAL
-        if self.normalized_name is None:
-            self.normalized_name = re.sub(r'[^a-zA-Z0-9]', '', self.name).lower()
+    # def __post_init__(self):
+    #     self.node_type = NodeType.JOURNAL
+    #     if self.normalized_name is None:
+    #         self.normalized_name = re.sub(r'[^a-zA-Z0-9]', '', self.name).lower()
             
-        self.properties = {
-            'name': self.name,
-            'normalized_name': self.normalized_name,
-            'issn': self.issn,
-            'impact_factor': self.impact_factor,
-            'publisher': self.publisher,
-            'is_conference': self.is_conference
-        }
+    #     self.properties = {
+    #         'name': self.name,
+    #         'normalized_name': self.normalized_name,
+    #         'issn': self.issn,
+    #         'impact_factor': self.impact_factor,
+    #         'publisher': self.publisher,
+    #         'is_conference': self.is_conference
+    #     }

@@ -1,6 +1,7 @@
 import requests
 import json
 import numpy as np
+from typing import List
 from sklearn.metrics.pairwise import cosine_similarity
 
 from .logger import setup_logger
@@ -13,7 +14,7 @@ class SemanticRelationshipGenerator:
         self.logger = setup_logger()
         self.embeddings_cache = {}
         
-    def generate_embeddings(self):
+    def generate_embeddings(self, batch_size: int = 32):
         """Generate embeddings for all papers using Ollama"""
         # Get all papers from database
         query = """
@@ -23,11 +24,24 @@ class SemanticRelationshipGenerator:
         """
         papers = self.graph_store.execute(query)
 
-        for paper in papers:
-            text = self._format_embedding_text(paper)
-            embedding = self._get_ollama_embedding(text)
-            if embedding:
-                self.embeddings_cache[paper['id']] = embedding
+        # for paper in papers:
+        #     text = self._format_embedding_text(paper)
+        #     embedding = self._get_ollama_embedding(text)
+        #     if embedding:
+        #         self.embeddings_cache[paper['id']] = embedding
+
+        # Process in batches for efficiency
+        for i in range(0, len(papers), batch_size):
+            batch = papers[i:i+batch_size]
+            texts = [self._format_embedding_text(paper) for paper in batch]
+            embeddings = self._get_batch_ollama_embedding(texts)
+            
+            for j, paper in enumerate(batch):
+                if embeddings and j < len(embeddings):
+                    self.embeddings_cache[paper['id']] = embeddings[j]
+                    # Store in Neo4j as well
+                    self._store_embedding(paper['id'], embeddings[j])
+    
     
     def _format_embedding_text(self, paper: dict) -> str:
         """Create text for embedding generation"""
@@ -36,6 +50,17 @@ class SemanticRelationshipGenerator:
         Methodology: {paper['methodology']}
         Main Findings: {paper['findings']}
         """
+
+
+    def _store_embedding(self, paper_id: str, embedding: List[float]):
+        """Store embedding in Neo4j"""
+        query = """
+        MATCH (p:PAPER {id: $id})
+        SET p.embedding = $embedding
+        """
+        self.graph_store.execute(query, {'id': paper_id, 'embedding': embedding})
+
+
                 
     def create_semantic_relationships(self, similarity_threshold: float = 0.80):
         """Create semantic relationships between papers"""
@@ -57,6 +82,7 @@ class SemanticRelationshipGenerator:
                     self._create_relationship(paper_id1, paper_id2, 'SEMANTIC_SIMILAR', 
                                            {'similarity_score': similarity})
                     
+    
     def create_limitation_relationships(self):
         """Create ADDRESSES_LIMITATION relationships using LLM"""
         # Get all papers with their content
@@ -74,6 +100,19 @@ class SemanticRelationshipGenerator:
                     self._create_relationship(base_paper['id'], candidate_paper['id'], 
                                            'ADDRESSES_LIMITATION')
     
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
     def _get_ollama_embedding(self, text: str):
         """Get embedding from Ollama"""
         try:
@@ -90,7 +129,30 @@ class SemanticRelationshipGenerator:
         except Exception as e:
             self.logger.warning(f"======================Failed to get embedding: {e}")
         return None
+
+
+    def _get_batch_ollama_embedding(self, texts: List[str]):
+        """Get batch embeddings from Ollama"""
+        try:
+            response = requests.post(
+                                   f"{self.ollama_url}/api/embed", 
+                                   json = {
+                                       "model":"nomic-embed-text:latest", 
+                                       "input": texts
+                                   }
+                                )
+            if response.status_code == 200:
+                return response.json()["embeddings"]
+        except Exception as e:
+            self.logger.error(f"Failed to get batch embeddings: {e}")
+        return None
+
         
+    
+    
+    
+    
+    
     def _calculate_similarity(self, paper_id1: str, paper_id2: str) -> float:
         """Calculate cosine similarity between two papers"""
         emb1 = np.array(self.embeddings_cache[paper_id1]).reshape(1, -1)

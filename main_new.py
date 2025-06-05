@@ -3,12 +3,17 @@ from src.graph_builder import GraphBuilder
 from src.data.preprocessor import DataPreprocessor
 from src.data.loader import DataLoader
 from src.logger import setup_logger
-from src.semantic_relation import SemanticRelationshipGenerator
+# from src.semantic_relation import SemanticRelationshipGenerator
+from src.semantic import SemanticRelationshipGenerator
 from src.literature_review import LiteratureReviewGenerator
 
 import pandas as pd
 import logging
 import argparse
+
+import warnings
+warnings.filterwarnings("ignore")
+
 
 
 class ResearchGraphPipeline:
@@ -45,43 +50,37 @@ class ResearchGraphPipeline:
         
         return df_processed
 
-    def test_single_node_insertion(self):
-        """Test inserting a single node to isolate the issue"""
-        test_node = {
-            'id': 'test_paper_123',
-            'type': 'PAPER',
-            'title': 'Test Paper',
-            'year': 2024
-        }
-        
-        print(f"Testing node insertion: {test_node}")
-        result = self.graph_store.insert_node(test_node)
-        print(f"Insert result: {result} (type: {type(result)})")
-        
-        # Check if it's actually in the database
-        verify_query = "MATCH (n:Paper {id: 'test_paper_123'}) RETURN n"
-        db_result = self.graph_store.execute(verify_query)
-        print(f"Database verification: {db_result}")
-        
-        return result, db_result
 
     def run(self, data_path: str): #, output_path: str = None):
         """Run the complete pipeline"""
-        # Load and preprocess data
+        ## Load and preprocess data
         df_processed = self.load_and_preprocess_data(data_path)
         
-        ## insert single node
-        self.test_single_node_insertion()
+        ## if you really want to drop the exitsing graph first 
+        self.graph_store.execute("MATCH (n) DETACH DELETE n")
+        self.logger.info("="*50)
+        self.logger.warning(f" {'!'*30} Deleted existing graph!!")
+        self.logger.info("="*50)
 
-        # Build knowledge graph
+        ## Build knowledge graph
         graph_builder = GraphBuilder(self.graph_store)
         graph_builder.build_graph(df_processed)
         
         # # Add semantic relationships
         semantic_generator = SemanticRelationshipGenerator(self.graph_store)
         semantic_generator.generate_embeddings()
-        semantic_generator.create_semantic_relationships()
-        semantic_generator.create_limitation_relationships() ## . this step takes time, to do : make it optimized 
+        semantic_generator.create_semantic_relationships(similarity_threshold=0.78, top_k=40)
+        semantic_generator.create_limitation_relationships(importance_percent=0.10, top_k=2, similarity_threshold=0.80) ## increase importance_percent for better future direction in summary
+
+        
+        # Final database stats
+        self.logger.info("PHASE 2: Second layer database statistics...")
+        self.graph_store.log_database_stats()
+        
+        self.logger.info("="*50)
+        self.logger.info("Second Phase GRAPH CONSTRUCTION COMPLETED SUCCESSFULLY")
+        self.logger.info("="*50)
+
         
         # # Generate literature review
         review_generator = LiteratureReviewGenerator(self.graph_store)

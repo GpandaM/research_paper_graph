@@ -35,7 +35,7 @@ class LiteratureReviewGenerator:
             # Prepare the full prompt with context
             full_prompt = self._prepare_prompt_with_context(prompt, context_data)
             
-            print(f"prompt has {len(full_prompt.split())} words.")
+            # print(f"prompt has {len(full_prompt.split())} words.")
 
             request_data = {
                 "model": "mistral:7b-instruct-v0.2-q4_0",
@@ -53,7 +53,7 @@ class LiteratureReviewGenerator:
                                     f"{self.ollama_url}/api/generate", 
                                     headers={"Content-Type": "application/json"},
                                     data=json.dumps(request_data),
-                                    timeout=180  # 60 seconds timeout
+                                    timeout=240  # 240 seconds timeout
                 )
             
             if response.status_code == 200:
@@ -65,7 +65,7 @@ class LiteratureReviewGenerator:
             return answer
         
         except Exception as e:
-            self.logger.error(f"Ollama API call failed: {e}")
+            self.logger.error(f" {'!'*30} Ollama API call failed: {e}")
             return f"Error generating content: {str(e)}"
     
     def _prepare_prompt_with_context(self, prompt: str, context_data: Dict) -> str:
@@ -104,7 +104,7 @@ class LiteratureReviewGenerator:
             papers.append(paper)
         
 
-        self.logger.info(f"{'=='*50} {len(papers)} Papers are retrived")
+        # self.logger.info(f"{'=='*50} {len(papers)} Papers are retrived")
         return {"papers": papers, "total_papers": len(papers)}
     
     # def _extract_temporal_trends(self) -> Dict:
@@ -343,172 +343,195 @@ class LiteratureReviewGenerator:
         }
     
     def _generate_introduction(self) -> str:
-        """Generate literature review introduction"""
-        paper_data = self._extract_paper_data()
-        temporal_data = self._extract_temporal_trends()
         
-        # Get year distribution based on the temporal method used
-        year_distribution = []
-        if "year_distribution" in temporal_data:
-            year_distribution = temporal_data["year_distribution"]
-        elif "area_evolution" in temporal_data:
-            # Extract year info from area evolution data
-            years = set()
-            for item in temporal_data["area_evolution"]:
-                years.add(item["year"])
-            year_distribution = [{"year": year, "paper_count": 0} for year in sorted(years)]
-        
-        # Safe year range calculation
-        paper_years = [p['year'] for p in paper_data['papers'] if p.get('year') is not None]
-        year_range = f"{min(paper_years)}-{max(paper_years)}" if paper_years else "N/A"
-        
-        context = {
-            "total_papers": paper_data["total_papers"],
-            "year_range": year_range,
-            "recent_papers": paper_data["papers"][:5],
-            "temporal_trends": temporal_data,
-            "year_distribution": year_distribution
-        }
-        
-        prompt = """
-        Based on the provided context data about research papers, write a comprehensive introduction 
-        for a literature review. The introduction should:
-        
-        1. Provide an overview of the research domain
-        2. Highlight the temporal scope and evolution of research
-        3. Mention key trends and developments
-        4. Set the stage for detailed analysis
-        
-        Write in an academic tone, approximately 100-150 words.
-        """
-        
-        return (self._call_ollama(prompt, context), paper_data)
+        try:
+            """Generate literature review introduction"""
+            paper_data = self._extract_paper_data()
+            temporal_data = self._extract_temporal_trends()
+            
+            # Get year distribution based on the temporal method used
+            year_distribution = []
+            if "year_distribution" in temporal_data:
+                year_distribution = temporal_data["year_distribution"]
+            elif "area_evolution" in temporal_data:
+                # Extract year info from area evolution data
+                years = set()
+                for item in temporal_data["area_evolution"]:
+                    years.add(item["year"])
+                year_distribution = [{"year": year, "paper_count": 0} for year in sorted(years)]
+            
+            # Safe year range calculation
+            paper_years = [p['year'] for p in paper_data['papers'] if p.get('year') is not None]
+            year_range = f"{min(paper_years)}-{max(paper_years)}" if paper_years else "N/A"
+            
+            context = {
+                "total_papers": paper_data["total_papers"],
+                "year_range": year_range,
+                "recent_papers": paper_data["papers"][:5],
+                "temporal_trends": temporal_data,
+                "year_distribution": year_distribution
+            }
+            
+            prompt = """
+            Based on the provided context data about research papers, write a comprehensive introduction in an academic tone
+            approximately in 100-150 words. The introduction should:
+            
+            1. Provide an overview of the research domain
+            2. Highlight the temporal scope and evolution of research
+            3. Mention key trends and developments
+            4. Set the stage for detailed analysis
+            
+            """
+            
+            return (self._call_ollama(prompt, context), paper_data)
+
+        except Exception as e:
+            self.logger.exception(f"There is an error while generating the Introduction {e}")
+            raise
     
     def _generate_research_areas(self) -> str:
-        """Generate research areas analysis"""
-        communities = self._extract_research_communities()
-        self.logger.info(f"communities created")
-        paper_data = self._extract_paper_data()
         
-        # Extract application areas and keywords
-        application_areas = Counter()
-        all_keywords = Counter()
-        
-        for paper in paper_data["papers"]:
-            if paper.get('application_area'):
-                application_areas[paper['application_area']] += 1
-            for keyword in paper.get('keywords', []):
-                if keyword:
-                    all_keywords[keyword] += 1
-        
-        context = {
-            "communities": communities,
-            "top_application_areas": dict(application_areas.most_common(10)),
-            "top_keywords": dict(all_keywords.most_common(20)),
-            "sample_papers": paper_data["papers"][:10]
-        }
-        
-        prompt = """
-        Based on the research communities, application areas, and keywords data, 
-        analyze and describe the major research areas in this literature. 
-        
-        Structure your response to cover:
-        1. Main research themes and clusters
-        2. Interdisciplinary connections
-        3. Emerging areas of focus
-        4. Geographic or institutional concentrations
-        
-        Write in academic style, approximately 80-100 words.
-        """
-        
-        return self._call_ollama(prompt, context)
+        try:
+            """Generate research areas analysis"""
+            communities = self._extract_research_communities()
+            self.logger.info(f"communities created")
+            paper_data = self._extract_paper_data()
+            
+            # Extract application areas and keywords
+            application_areas = Counter()
+            all_keywords = Counter()
+            
+            for paper in paper_data["papers"]:
+                if paper.get('application_area'):
+                    application_areas[paper['application_area']] += 1
+                for keyword in paper.get('keywords', []):
+                    if keyword:
+                        all_keywords[keyword] += 1
+            
+            context = {
+                "communities": communities,
+                "top_application_areas": dict(application_areas.most_common(10)),
+                "top_keywords": dict(all_keywords.most_common(20)),
+                "sample_papers": paper_data["papers"][:10]
+            }
+            
+            prompt = """
+            Based on the research communities, application areas, and keywords data;
+            analyze and describe the major research areas in academic style, approximately in 80-100 words 
+            
+            Structure your response to cover:
+            1. Main research themes and clusters
+            2. Interdisciplinary connections
+            3. Emerging areas of focus
+            4. Geographic or institutional concentrations
+            
+            """
+            
+            return self._call_ollama(prompt, context)
+        except Exception as e:
+            self.logger.exception(f"There is an exception while extracting research areas {e}")
+            raise
     
     def _generate_methodologies(self) -> str:
-        """Generate methodologies analysis"""
-        methodology_data = self._extract_methodologies()
+        try:
+            """Generate methodologies analysis"""
+            methodology_data = self._extract_methodologies()
+            
+            context = {
+                "methodologies": methodology_data["methodologies"],
+                "methodology_evolution": methodology_data["methodology_evolution"]
+            }
+            
+            prompt = """
+            Analyze the methodological approaches used in this research domain based on the provided data.
+            
+            Your analysis should cover:
+            1. Dominant methodological approaches
+            2. Evolution of methods over time
+            3. Methodological trends and patterns
+            4. Strengths and limitations of different approaches
+            
+            Write in academic style, approximately 150-200 words.
+            """
+            
+            return self._call_ollama(prompt, context)
         
-        context = {
-            "methodologies": methodology_data["methodologies"],
-            "methodology_evolution": methodology_data["methodology_evolution"]
-        }
-        
-        prompt = """
-        Analyze the methodological approaches used in this research domain based on the provided data.
-        
-        Your analysis should cover:
-        1. Dominant methodological approaches
-        2. Evolution of methods over time
-        3. Methodological trends and patterns
-        4. Strengths and limitations of different approaches
-        
-        Write in academic style, approximately 150-200 words.
-        """
-        
-        return self._call_ollama(prompt, context)
+        except Exception as e:
+            self.logger.exception(f"There is an error while generating methodology summary {e}")
+            raise
+    
     
     def _generate_key_contributions(self) -> str:
-        """Generate key contributions analysis"""
-        influential_works = self._extract_influential_works()
-        paper_data = self._extract_paper_data()
+        try:
+            """Generate key contributions analysis"""
+            influential_works = self._extract_influential_works()
+            paper_data = self._extract_paper_data()
+            
+            # Extract key findings and contributions
+            key_findings = []
+            for paper in paper_data["papers"][:15]:
+                if paper.get('main_findings'):
+                    key_findings.append({
+                        "title": paper.get('title'),
+                        "year": paper.get('year'),
+                        "findings": paper.get('main_findings'),
+                        "citations": paper.get('citations_count', 0)
+                    })
+            
+            context = {
+                "influential_papers": influential_works["influential_papers"],
+                "influential_authors": influential_works["influential_authors"],
+                "key_findings": key_findings
+            }
+            
+            prompt = """
+            Synthesize the key contributions and findings in 300-500 words in academic style based on the provided data
+            
+            Structure your response to include only:
+            1. Breakthrough discoveries and innovations
+            2. Theoretical contributions and frameworks
+            3. Methodological advances
+            4. Practical applications and implementations
+            5. Most influential works and their impact
+            
+            """
+            
+            return self._call_ollama(prompt, context)
         
-        # Extract key findings and contributions
-        key_findings = []
-        for paper in paper_data["papers"][:15]:
-            if paper.get('main_findings'):
-                key_findings.append({
-                    "title": paper.get('title'),
-                    "year": paper.get('year'),
-                    "findings": paper.get('main_findings'),
-                    "citations": paper.get('citations_count', 0)
-                })
-        
-        context = {
-            "influential_papers": influential_works["influential_papers"],
-            "influential_authors": influential_works["influential_authors"],
-            "key_findings": key_findings
-        }
-        
-        prompt = """
-        Synthesize the key contributions and findings from this literature based on the provided data.
-        
-        Structure your response to include:
-        1. Breakthrough discoveries and innovations
-        2. Theoretical contributions and frameworks
-        3. Methodological advances
-        4. Practical applications and implementations
-        5. Most influential works and their impact
-        
-        Write in academic style, approximately 200-300 words.
-        """
-        
-        return self._call_ollama(prompt, context)
+        except Exception as e:
+            self.logger.error(f"There is an exception while generating key contributors {e}")
+            raise
     
     def _generate_future_directions(self) -> str:
-        """Generate future research directions"""
-        limitations_data = self._extract_limitations_and_gaps()
-        recent_papers = self._extract_paper_data()["papers"][:10]
+        try:
+            """Generate future research directions"""
+            limitations_data = self._extract_limitations_and_gaps()
+            recent_papers = self._extract_paper_data()["papers"][:10]
+            
+            context = {
+                "limitations": limitations_data["limitations"],
+                "limitation_relationships": limitations_data["limitation_relationships"],
+                "recent_developments": recent_papers
+            }
+            
+            prompt = """
+            Based on the identified limitations, research gaps, and recent developments, 
+            propose future research directions for this domain in 100-150 words in academic style.
+            
+            Your analysis should cover:
+            1. Unresolved research questions and gaps
+            2. Emerging opportunities and challenges
+            3. Technological and methodological opportunities
+            4. Interdisciplinary research potential
+            5. Practical applications and societal impact
+            
+            """
+            
+            return self._call_ollama(prompt, context)
         
-        context = {
-            "limitations": limitations_data["limitations"],
-            "limitation_relationships": limitations_data["limitation_relationships"],
-            "recent_developments": recent_papers
-        }
-        
-        prompt = """
-        Based on the identified limitations, research gaps, and recent developments, 
-        propose future research directions for this domain.
-        
-        Your analysis should cover:
-        1. Unresolved research questions and gaps
-        2. Emerging opportunities and challenges
-        3. Technological and methodological opportunities
-        4. Interdisciplinary research potential
-        5. Practical applications and societal impact
-        
-        Write in academic style, approximately 100-150 words.
-        """
-        
-        return self._call_ollama(prompt, context)
+        except Exception as e:
+            self.logger.error(f"There is an exception while generating future directions {e}")
+            raise
     
     def format_references(self, papers: List[Dict]) -> str:
         """Format papers as references"""
@@ -540,13 +563,22 @@ class LiteratureReviewGenerator:
 
             top_40_percent = top_papers[:int(len(top_papers) * 0.4)]
             
+            self.logger.info(f"{'=='*20} Final Summary: Introduction generated.")
+            research_areas = self._generate_research_areas()
+            self.logger.info(f"{'=='*20} Final Summary: Research Areas generated.")
+            methodologies = self._generate_methodologies()
+            self.logger.info(f"{'=='*20} Final Summary: Methodologies generated.")
+            key_contributions = self._generate_key_contributions()
+            self.logger.info(f"{'=='*20} Final Summary: Key Contributions generated.")
+            future_directions = self._generate_future_directions()
+            self.logger.info(f"{'=='*20} Final Summary: Future Direction generated.")
             
             review = {
                 "introduction": intro,
-                "research_areas": self._generate_research_areas(),
-                "methodologies": self._generate_methodologies(),
-                "contributions": self._generate_key_contributions(),
-                "future_directions": self._generate_future_directions(),
+                "research_areas": research_areas,
+                "methodologies": methodologies,
+                "contributions": key_contributions,
+                "future_directions": future_directions,
                 "references": self.format_references(top_40_percent)
             }
             
