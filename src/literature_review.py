@@ -6,6 +6,7 @@ import pandas as pd
 from collections import defaultdict, Counter
 import json
 import requests
+from neo4j.time import Date, Time, DateTime, Duration
 
 from .logger import setup_logger
 
@@ -44,7 +45,7 @@ class LiteratureReviewGenerator:
                 "options": {
                     "temperature": 0.7,
                     "top_p": 0.9,
-                    "num_predict": 500,
+                    "num_predict": 800,
                     "repeat_penalty": 1.1
                         }
                     }
@@ -68,6 +69,9 @@ class LiteratureReviewGenerator:
             self.logger.error(f" {'!'*30} Ollama API call failed: {e}")
             return f"Error generating content: {str(e)}"
     
+    
+    
+    
     def _prepare_prompt_with_context(self, prompt: str, context_data: Dict) -> str:
         """Prepare prompt with structured context data"""
         context_str = ""
@@ -76,6 +80,46 @@ class LiteratureReviewGenerator:
         
         return f"{context_str}{prompt}"
     
+
+    def format_cypher_result(records):
+        """
+        Converts Neo4j driver records into a JSON-safe list of dictionaries.
+        Handles all complex types (nodes, relationships, paths, temporal types).
+        """
+        def serialize(obj):
+            # Handle graph types
+            if hasattr(obj, 'items'):  # Nodes, Relationships
+                return dict(obj.items())
+            
+            # Handle temporal types
+            elif isinstance(obj, (Date, Time, DateTime)):
+                return obj.isoformat()
+            elif isinstance(obj, Duration):
+                return str(obj)
+            
+            # Handle paths by extracting start/end nodes
+            elif hasattr(obj, 'nodes') and hasattr(obj, 'relationships'):
+                return {
+                    "start_node": dict(obj.nodes[0].items()),
+                    "end_node": dict(obj.nodes[-1].items()),
+                    "length": len(obj.relationships)
+                }
+            
+            # Handle lists recursively
+            elif isinstance(obj, list):
+                return [serialize(item) for item in obj]
+            
+            # Return primitives as-is
+            return obj
+        
+        return [
+            {key: serialize(value) for key, value in record.items()}
+            for record in records
+        ]
+
+
+
+
     def _extract_paper_data(self) -> Dict:
         """Extract comprehensive paper data from graph"""
         query = """
@@ -107,93 +151,97 @@ class LiteratureReviewGenerator:
         # self.logger.info(f"{'=='*50} {len(papers)} Papers are retrived")
         return {"papers": papers, "total_papers": len(papers)}
     
-    # def _extract_temporal_trends(self) -> Dict:
-    #     """Extract temporal evolution patterns"""
-    #     query = """
-    #     MATCH (p1:PAPER)-[:TEMPORAL_SUCCESSOR]->(p2:PAPER)
-    #     RETURN p1.year as earlier_year, p2.year as later_year,
-    #            p1.title as earlier_title, p2.title as later_title,
-    #            p1.main_findings as earlier_findings, p2.main_findings as later_findings
-    #     ORDER BY p1.year, p2.year
-    #     """
-        
-    #     temporal_data = self.graph_store.execute(query)
-        
-    #     # Year-wise paper distribution
-    #     year_query = """
-    #     MATCH (p:PAPER)
-    #     WHERE p.year IS NOT NULL
-    #     RETURN p.year as year, count(p) as paper_count
-    #     ORDER BY year
-    #     """
-        
-    #     year_distribution = self.graph_store.execute(year_query)
-        
-    #     return {
-    #         "temporal_relationships": temporal_data,
-    #         "year_distribution": year_distribution
-    #     }
-
-
+    
+    
     def _extract_temporal_trends(self) -> Dict:
-        """Extract comprehensive temporal patterns from available data"""
+        """Extract temporal evolution patterns"""
+        query = """
+        MATCH (p1:PAPER)-[:TEMPORAL_SUCCESSOR]->(p2:PAPER)
+        RETURN p1.year as earlier_year, p2.year as later_year,
+               p1.title as earlier_title, p2.title as later_title,
+               p1.main_findings as earlier_findings, p2.main_findings as later_findings
+        ORDER BY p1.year, p2.year
+        """
         
-        # 1. Year-wise paper distribution (ALWAYS include this)
+        temporal_data = self.graph_store.execute(query)
+        
+        # Year-wise paper distribution
         year_query = """
         MATCH (p:PAPER)
         WHERE p.year IS NOT NULL
-        RETURN p.year as year, count(p) as paper_count,
-               collect(p.title)[0..3] as sample_titles
+        RETURN p.year as year, count(p) as paper_count
         ORDER BY year
         """
         
-        # 2. Research evolution by application areas over time
-        area_evolution_query = """
-        MATCH (p:PAPER)
-        WHERE p.year IS NOT NULL AND p.application_area IS NOT NULL AND p.application_area <> ''
-        WITH p.year as year, p.application_area as area, count(p) as paper_count
-        RETURN year, area, paper_count
-        ORDER BY year, paper_count DESC
-        """
-        
-        # 3. Methodology adoption over time
-        methodology_timeline_query = """
-        MATCH (p:PAPER)
-        WHERE p.year IS NOT NULL AND p.methodology IS NOT NULL AND p.methodology <> ''
-        WITH p.year as year, p.methodology as methodology, count(p) as usage_count
-        RETURN year, methodology, usage_count
-        ORDER BY year, usage_count DESC
-        """
-        
-        # 4. Citation trends over time
-        citation_trends_query = """
-        MATCH (p:PAPER)
-        WHERE p.year IS NOT NULL AND p.citations_count IS NOT NULL
-        RETURN p.year as year, 
-               avg(toFloat(p.citations_count)) as avg_citations,
-               max(p.citations_count) as max_citations,
-               count(p) as paper_count
-        ORDER BY year
-        """
-        
-        
-        area_evolution = self.graph_store.execute(area_evolution_query)
-        self.logger.info(f"Extracted area_evolution")
-        methodology_timeline = self.graph_store.execute(methodology_timeline_query)
-        self.logger.info(f"Extracted methodology_timeline")
         year_distribution = self.graph_store.execute(year_query)
-        self.logger.info(f"Extracted year_distribution")
-        citation_trends = self.graph_store.execute(citation_trends_query)
-        self.logger.info(f"Extracted citation_trends")
-        
         
         return {
-            "year_distribution": year_distribution,
-            "area_evolution": area_evolution,
-            "methodology_timeline": methodology_timeline,
-            "citation_trends": citation_trends,
-            "temporal_method": "comprehensive_analysis"
+            "temporal_relationships": temporal_data,
+            "year_distribution": year_distribution
         }
+
+
+    # def _extract_temporal_trends(self) -> Dict:
+    #     """Extract comprehensive temporal patterns from available data"""
+        
+    #     # 1. Year-wise paper distribution (ALWAYS include this)
+    #     year_query = """
+    #     MATCH (p:PAPER)
+    #     WHERE p.year IS NOT NULL
+    #     RETURN p.year as year, count(p) as paper_count,
+    #            collect(p.title)[0..3] as sample_titles
+    #     ORDER BY year
+    #     """
+        
+    #     # 2. Research evolution by application areas over time
+    #     area_evolution_query = """
+    #     MATCH (p:PAPER)
+    #     WHERE p.year IS NOT NULL AND p.application_area IS NOT NULL AND p.application_area <> ''
+    #     WITH p.year as year, p.application_area as area, count(p) as paper_count
+    #     RETURN year, area, paper_count
+    #     ORDER BY year, paper_count DESC
+    #     """
+        
+    #     # 3. Methodology adoption over time
+    #     methodology_timeline_query = """
+    #     MATCH (p:PAPER)
+    #     WHERE p.year IS NOT NULL AND p.methodology IS NOT NULL AND p.methodology <> ''
+    #     WITH p.year as year, p.methodology as methodology, count(p) as usage_count
+    #     RETURN year, methodology, usage_count
+    #     ORDER BY year, usage_count DESC
+    #     """
+        
+    #     # 4. Citation trends over time
+    #     citation_trends_query = """
+    #     MATCH (p:PAPER)
+    #     WHERE p.year IS NOT NULL AND p.citations_count IS NOT NULL
+    #     RETURN p.year as year, 
+    #            avg(toFloat(p.citations_count)) as avg_citations,
+    #            max(p.citations_count) as max_citations,
+    #            count(p) as paper_count
+    #     ORDER BY year
+    #     """
+        
+        
+    #     area_evolution = self.graph_store.execute(area_evolution_query)
+    #     self.logger.info(f"Extracted area_evolution")
+    #     methodology_timeline = self.graph_store.execute(methodology_timeline_query)
+    #     self.logger.info(f"Extracted methodology_timeline")
+    #     year_distribution = self.graph_store.execute(year_query)
+    #     self.logger.info(f"Extracted year_distribution")
+    #     citation_trends = self.graph_store.execute(citation_trends_query)
+    #     self.logger.info(f"Extracted citation_trends")
+        
+        
+    #     return {
+    #         "year_distribution": year_distribution,
+    #         "area_evolution": area_evolution,
+    #         "methodology_timeline": methodology_timeline,
+    #         "citation_trends": citation_trends,
+    #         "temporal_method": "comprehensive_analysis"
+    #     }
+    
+    
     
     def _extract_research_communities(self) -> Dict:
         """Extract research communities using GDS algorithms"""
@@ -262,6 +310,8 @@ class LiteratureReviewGenerator:
         
         return {"communities": dict(community_groups)}
     
+    
+    
     def _extract_influential_works(self) -> Dict:
         """Extract most influential papers and authors"""
         # High-impact papers
@@ -289,6 +339,8 @@ class LiteratureReviewGenerator:
             "influential_authors": influential_authors
         }
     
+    
+    
     def _extract_methodologies(self) -> Dict:
         """Extract methodology patterns and evolution"""
         methodology_query = """
@@ -314,6 +366,9 @@ class LiteratureReviewGenerator:
             "methodologies": methodologies,
             "methodology_evolution": methodology_evolution
         }
+    
+    
+    
     
     def _extract_limitations_and_gaps(self) -> Dict:
         """Extract research limitations and gaps"""
@@ -341,6 +396,8 @@ class LiteratureReviewGenerator:
             "limitations": limitations,
             "limitation_relationships": limitation_relationships
         }
+    
+    
     
     def _generate_introduction(self) -> str:
         
@@ -389,6 +446,8 @@ class LiteratureReviewGenerator:
             self.logger.exception(f"There is an error while generating the Introduction {e}")
             raise
     
+    
+    
     def _generate_research_areas(self) -> str:
         
         try:
@@ -432,6 +491,8 @@ class LiteratureReviewGenerator:
             self.logger.exception(f"There is an exception while extracting research areas {e}")
             raise
     
+    
+    
     def _generate_methodologies(self) -> str:
         try:
             """Generate methodologies analysis"""
@@ -461,6 +522,7 @@ class LiteratureReviewGenerator:
             raise
     
     
+    
     def _generate_key_contributions(self) -> str:
         try:
             """Generate key contributions analysis"""
@@ -485,15 +547,19 @@ class LiteratureReviewGenerator:
             }
             
             prompt = """
-            Synthesize the key contributions and findings in 300-500 words in academic style based on the provided data
-            
-            Structure your response to include only:
-            1. Breakthrough discoveries and innovations
-            2. Theoretical contributions and frameworks
-            3. Methodological advances
-            4. Practical applications and implementations
-            5. Most influential works and their impact
-            
+                Below is the data you need. Use it to write a single, self-contained academic-style synthesis of about 400 words. Organize strictly under these five headings (in this order) and do not add any extra sections or commentary:
+
+                1. Breakthrough discoveries and innovations  
+                2. Theoretical contributions and frameworks  
+                3. Methodological advances  
+                4. Practical applications and implementations  
+                5. Most influential works and their impact  
+
+                Instructions:
+                • Stay within ~400 words (≈2,500 tokens at most).
+                • Use an academic tone but keep it concise.
+                • Don’t repeat the prompt or include any extra preamble or closing.
+                • Do not include any citation number or references such as [1], [2] etc.
             """
             
             return self._call_ollama(prompt, context)
@@ -501,6 +567,7 @@ class LiteratureReviewGenerator:
         except Exception as e:
             self.logger.error(f"There is an exception while generating key contributors {e}")
             raise
+    
     
     def _generate_future_directions(self) -> str:
         try:
@@ -517,6 +584,7 @@ class LiteratureReviewGenerator:
             prompt = """
             Based on the identified limitations, research gaps, and recent developments, 
             propose future research directions for this domain in 100-150 words in academic style.
+            Do not include any citation number or references such as [1], [2] etc.
             
             Your analysis should cover:
             1. Unresolved research questions and gaps
@@ -564,12 +632,16 @@ class LiteratureReviewGenerator:
             top_40_percent = top_papers[:int(len(top_papers) * 0.4)]
             
             self.logger.info(f"{'=='*20} Final Summary: Introduction generated.")
+
             research_areas = self._generate_research_areas()
             self.logger.info(f"{'=='*20} Final Summary: Research Areas generated.")
+            
             methodologies = self._generate_methodologies()
             self.logger.info(f"{'=='*20} Final Summary: Methodologies generated.")
+            
             key_contributions = self._generate_key_contributions()
             self.logger.info(f"{'=='*20} Final Summary: Key Contributions generated.")
+
             future_directions = self._generate_future_directions()
             self.logger.info(f"{'=='*20} Final Summary: Future Direction generated.")
             
